@@ -3,6 +3,9 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { viteSingleFile } from "vite-plugin-singlefile";
 
 export default defineConfig({
+  resolve: {
+    conditions: ["browser"],
+  },
   plugins: [
     svelte(),
     viteSingleFile({
@@ -16,5 +19,9 @@ export default defineConfig({
     assetsInlineLimit: 100000000,
     cssCodeSplit: false,
     outDir: "dist",
+  },
+  test: {
+    environment: "jsdom",
+    include: ["src/**/*.test.js"],
   },
 });

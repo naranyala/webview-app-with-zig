@@ -1,9 +1,17 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const c = @cImport({
-    @cInclude("time.h");
-});
 const Webview = @import("webview").Webview;
+const backend = @import("backend.zig");
+const core_plugin = @import("backend/core_plugin.zig");
+
+const gtk = struct {
+    extern fn gtk_window_iconify(window: ?*anyopaque) void;
+    extern fn gtk_window_deiconify(window: ?*anyopaque) void;
+    extern fn gtk_window_maximize(window: ?*anyopaque) void;
+    extern fn gtk_window_unmaximize(window: ?*anyopaque) void;
+    extern fn gtk_window_fullscreen(window: ?*anyopaque) void;
+    extern fn gtk_window_unfullscreen(window: ?*anyopaque) void;
+};
 
 // The built Svelte frontend is embedded directly into the binary.
 const html = @embedFile("view/dist/index.html");
@@ -11,40 +19,86 @@ const html = @embedFile("view/dist/index.html");
 const Easy = Webview.Easy(Context);
 
 const Context = struct {
-    count: i64,
+    state: backend.State,
 
     pub fn increment(self: *Context, req: Easy.Request) !void {
-        if (req.args.len < 3) return error.InvalidArgument;
-        const delta = try std.fmt.parseInt(i64, req.args[1 .. req.args.len - 1], 10);
-        self.count += delta;
+        const delta = try backend.parseIncrementArgs(req.args, std.heap.page_allocator);
+        const count = self.state.increment(delta);
         var buf: [32]u8 = undefined;
-        req.resolveWith(try std.fmt.bufPrintZ(&buf, "{d}", .{self.count}));
+        req.resolveWith(try std.fmt.bufPrintZ(&buf, "{d}", .{count}));
     }
 
     pub fn reset(self: *Context, req: Easy.Request) !void {
-        self.count = 0;
-        req.resolveWith("0");
+        var buf: [32]u8 = undefined;
+        req.resolveWith(try std.fmt.bufPrintZ(&buf, "{d}", .{self.state.reset()}));
     }
 
     pub fn getSystemInfo(_: *Context, req: Easy.Request) !void {
-        const info = switch (builtin.os.tag) {
-            .linux => "Linux",
-            .macos => "macOS",
-            .windows => "Windows",
-            else => "Unknown",
-        };
-        req.resolveWith(info);
+        req.resolveWith(backend.systemInfo());
     }
 
     pub fn getTimestamp(_: *Context, req: Easy.Request) !void {
-        const ts = c.time(null);
         var buf: [32]u8 = undefined;
-        req.resolveWith(try std.fmt.bufPrintZ(&buf, "{d}", .{@as(i64, @intCast(ts))}));
+        req.resolveWith(try backend.formatTimestamp(&buf, backend.timestamp()));
+    }
+
+    pub fn minimizeWindow(_: *Context, req: Easy.Request) !void {
+        if (comptime builtin.os.tag == .linux) {
+            gtk.gtk_window_iconify(req.easy.getWindow() orelse return error.InvalidState);
+        } else {
+            try req.easy.minimize();
+        }
+        req.resolve();
+    }
+
+    pub fn maximizeWindow(_: *Context, req: Easy.Request) !void {
+        if (comptime builtin.os.tag == .linux) {
+            gtk.gtk_window_maximize(req.easy.getWindow() orelse return error.InvalidState);
+        } else {
+            try req.easy.maximize();
+        }
+        req.resolve();
+    }
+
+    pub fn restoreWindow(_: *Context, req: Easy.Request) !void {
+        if (comptime builtin.os.tag == .linux) {
+            gtk.gtk_window_unmaximize(req.easy.getWindow() orelse return error.InvalidState);
+        } else {
+            try req.easy.unmaximize();
+        }
+        req.resolve();
+    }
+
+    pub fn enterFullscreen(_: *Context, req: Easy.Request) !void {
+        if (comptime builtin.os.tag == .linux) {
+            gtk.gtk_window_fullscreen(req.easy.getWindow() orelse return error.InvalidState);
+        } else {
+            try req.easy.fullscreen();
+        }
+        req.resolve();
+    }
+
+    pub fn exitFullscreen(_: *Context, req: Easy.Request) !void {
+        if (comptime builtin.os.tag == .linux) {
+            gtk.gtk_window_unfullscreen(req.easy.getWindow() orelse return error.InvalidState);
+        } else {
+            try req.easy.unfullscreen();
+        }
+        req.resolve();
+    }
+
+    pub fn closeWindow(_: *Context, req: Easy.Request) !void {
+        try req.easy.terminate();
     }
 };
 
+const BackendRegistry = backend.PluginRegistry(Easy);
+const backend_plugins = [_]BackendRegistry.Plugin{
+    .{ .id = "core", .register = core_plugin.register(Easy) },
+};
+
 pub fn main() !void {
-    var ctx: Context = .{ .count = 0 };
+    var ctx: Context = .{ .state = .{} };
     var easy: Easy = try .init(&ctx, .debug);
     defer easy.deinit();
 
@@ -52,10 +106,8 @@ pub fn main() !void {
     try easy.setSize(900, 600, .none);
     try easy.setHtml(html);
 
-    try easy.bind(.increment);
-    try easy.bind(.reset);
-    try easy.bind(.getSystemInfo);
-    try easy.bind(.getTimestamp);
+    const registry = BackendRegistry{ .plugins = &backend_plugins };
+    try registry.registerAll(&easy);
 
     try easy.run();
 }

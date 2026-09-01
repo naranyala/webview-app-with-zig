@@ -1,8 +1,8 @@
 import "./main.css";
-import App from "./App.svelte";
+import { activeFrontend } from "./frontends/index.js";
 import { mount } from "svelte";
 
-const app = mount(App, {
+const app = mount(activeFrontend.component, {
   target: document.getElementById("app"),
 });
 

@@ -10,6 +10,8 @@ pub fn build(b: *std.Build) void {
     // --- Zig Executable ---
     const exe = b.addExecutable(.{
         .name = "webview-app",
+        .use_llvm = true,
+        .use_lld = false,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
@@ -17,6 +19,12 @@ pub fn build(b: *std.Build) void {
             .link_libc = true,
         }),
     });
+
+    if (target.result.os.tag == .linux and target.query.isNative()) {
+        const prepare_linux_libc = b.addSystemCommand(&.{"bash"});
+        prepare_linux_libc.addFileArg(b.path("tools/prepare-linux-libc.sh"));
+        exe.setLibCFile(prepare_linux_libc.addOutputFileArg("libc.conf"));
+    }
 
     const webview_dep = b.dependency("webview", .{
         .target = target,
@@ -33,7 +41,8 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(exe);
 
     // --- Frontend Build (npm + vite) ---
-    const npm_install = b.addSystemCommand(&.{ "npm", "install" });
+    const npm_install = b.addSystemCommand(&.{"bash"});
+    npm_install.addFileArg(b.path("tools/install-frontend.sh"));
     npm_install.setCwd(b.path("src/view"));
 
     const vite_build = b.addSystemCommand(&.{ "npm", "run", "build" });
@@ -58,10 +67,16 @@ pub fn build(b: *std.Build) void {
     dev_step.dependOn(&dev_cmd.step);
 
     // --- Test Step ---
-    const exe_tests = b.addTest(.{ .root_module = exe.root_module });
-    const run_exe_tests = b.addRunArtifact(exe_tests);
+    const backend_module = b.createModule(.{
+        .root_source_file = b.path("src/backend.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    const backend_tests = b.addTest(.{ .root_module = backend_module, .use_llvm = true });
+    const run_backend_tests = b.addRunArtifact(backend_tests);
     const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&run_exe_tests.step);
+    test_step.dependOn(&run_backend_tests.step);
 }
 
 const WebkitGtkVersion = enum {

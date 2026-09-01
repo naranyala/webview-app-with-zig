@@ -4,6 +4,12 @@ declare global {
     reset(): Promise<number>;
     getSystemInfo(): Promise<string>;
     getTimestamp(): Promise<string>;
+    minimizeWindow(): Promise<void>;
+    maximizeWindow(): Promise<void>;
+    restoreWindow(): Promise<void>;
+    enterFullscreen(): Promise<void>;
+    exitFullscreen(): Promise<void>;
+    closeWindow(): Promise<void>;
   }
 }
 
