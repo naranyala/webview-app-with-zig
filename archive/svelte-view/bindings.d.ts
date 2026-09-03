@@ -7,8 +7,6 @@ declare global {
     minimizeWindow(): Promise<void>;
     maximizeWindow(): Promise<void>;
     restoreWindow(): Promise<void>;
-    enterFullscreen(): Promise<void>;
-    exitFullscreen(): Promise<void>;
     closeWindow(): Promise<void>;
   }
 }

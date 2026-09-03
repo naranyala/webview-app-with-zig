@@ -9,7 +9,6 @@
   let windowActionPending = $state(false);
   let windowError = $state("");
   let windowMaximized = $state(false);
-  let windowFullscreen = $state(false);
 
   function errorMessage(error) {
     return error instanceof Error ? error.message : String(error);
@@ -20,10 +19,6 @@
     windowActionPending = true;
     windowError = "";
     try {
-      if (!windowFullscreen) {
-        await window.enterFullscreen();
-        windowFullscreen = true;
-      }
       if (!openedApps.includes(appId)) openedApps = [...openedApps, appId];
       activeApp = appId;
     } catch (error) {
@@ -38,10 +33,6 @@
     windowActionPending = true;
     windowError = "";
     try {
-      if (windowFullscreen) {
-        await window.exitFullscreen();
-        windowFullscreen = false;
-      }
       activeApp = null;
     } catch (error) {
       windowError = errorMessage(error);
@@ -71,21 +62,6 @@
       if (windowMaximized) await window.restoreWindow();
       else await window.maximizeWindow();
       windowMaximized = !windowMaximized;
-    } catch (error) {
-      windowError = errorMessage(error);
-    } finally {
-      windowActionPending = false;
-    }
-  }
-
-  async function toggleFullscreen() {
-    if (windowActionPending) return;
-    windowActionPending = true;
-    windowError = "";
-    try {
-      if (windowFullscreen) await window.exitFullscreen();
-      else await window.enterFullscreen();
-      windowFullscreen = !windowFullscreen;
     } catch (error) {
       windowError = errorMessage(error);
     } finally {
@@ -213,9 +189,6 @@
             <button onclick={toggleMaximize} disabled={windowActionPending} aria-label={windowMaximized ? "Restore window" : "Maximize window"}>
               {windowMaximized ? "Restore" : "Max"}
             </button>
-            <button onclick={toggleFullscreen} disabled={windowActionPending} aria-label={windowFullscreen ? "Exit fullscreen" : "Enter fullscreen"}>
-              {windowFullscreen ? "Window" : "Full"}
-            </button>
             <button class="close-button" onclick={closeWindow} disabled={windowActionPending} aria-label="Close window">Close</button>
           </div>
         </header>
@@ -260,12 +233,18 @@
   }
 
   .launcher {
-    display: grid;
-    grid-template-columns: 250px minmax(0, 1fr);
+    display: block;
     min-height: 100vh;
   }
 
   .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 10;
+    width: 250px;
+    height: 100vh;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     padding: 2rem 1.25rem 1.5rem;
@@ -373,6 +352,7 @@
   }
 
   .launcher-main {
+    margin-left: 250px;
     display: flex;
     flex-direction: column;
     width: min(100%, 1180px);
@@ -550,14 +530,15 @@
   }
 
   .workspace {
-    display: grid;
-    grid-template-columns: 88px minmax(0, 1fr);
+    display: block;
     min-height: 100vh;
   }
 
   .workspace-sidebar {
-    position: sticky;
+    position: fixed;
     top: 0;
+    left: 0;
+    z-index: 10;
     display: flex;
     height: 100vh;
     flex-direction: column;
@@ -649,6 +630,7 @@
   }
 
   .workspace-stage {
+    margin-left: 88px;
     display: flex;
     min-width: 0;
     min-height: 100vh;
@@ -1330,6 +1312,11 @@
     }
 
     .sidebar {
+      position: static;
+      width: auto;
+      height: auto;
+      overflow: visible;
+      z-index: auto;
       display: block;
       min-height: auto;
       padding: 1rem;
@@ -1350,6 +1337,7 @@
     }
 
     .launcher-main {
+      margin-left: 0;
       padding: 3rem 1.25rem 1.5rem;
     }
 
@@ -1369,12 +1357,17 @@
     }
 
     .workspace {
-      grid-template-columns: 68px minmax(0, 1fr);
+      display: block;
     }
 
     .workspace-sidebar {
+      width: 68px;
       padding-right: 0.35rem;
       padding-left: 0.35rem;
+    }
+
+    .workspace-stage {
+      margin-left: 68px;
     }
 
     .workspace-menu-item {

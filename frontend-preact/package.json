@@ -1,0 +1,28 @@
+{
+  "name": "frontend-exploration-of-preact",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "npm run check && npm run check:bindings && node build.js",
+    "check": "node node_modules/@biomejs/biome/bin/biome check .",
+    "check:bindings": "node check-bindings.cjs",
+    "test": "node check-backend-errors.mjs",
+    "check:write": "node node_modules/@biomejs/biome/bin/biome check --write .",
+    "dev": "npm run check && node build.js --watch --serve",
+    "format": "node node_modules/@biomejs/biome/bin/biome format --write .",
+    "format:check": "node node_modules/@biomejs/biome/bin/biome format .",
+    "lint": "node node_modules/@biomejs/biome/bin/biome lint .",
+    "serve": "node build.js --serve"
+  },
+  "dependencies": {
+    "jspdf": "^4.2.1",
+    "preact": "^10.27.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.11",
+    "autoprefixer": "^10.4.20",
+    "esbuild": "^0.25.9",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17"
+  }
+}

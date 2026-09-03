@@ -1,6 +1,6 @@
-# WebView App with Svelte + Zig
+# WebView App with Preact + Zig
 
-A lightweight desktop application starter using [webview](https://github.com/webview/webview) with a Zig backend and Svelte 5 frontend.
+A lightweight desktop application starter using [webview](https://github.com/webview/webview) with a Zig backend and Preact frontend.
 
 ## Architecture
 
@@ -13,16 +13,17 @@ A lightweight desktop application starter using [webview](https://github.com/web
 │   ├── backend.zig    # Backend domain state, validation, and plugin registry
 │   ├── backend/
 │   │   └── core_plugin.zig
-│   └── view/          # Svelte frontend (Vite)
-│       ├── index.html
-│       ├── package.json
-│       ├── vite.config.js
-│       └── src/
-│           ├── main.js
-│           ├── main.css
-│           ├── App.svelte             # Default frontend shell
-│           ├── frontends/             # Swappable frontend entrypoints
-│           └── plugins/               # Registered tool plugins and views
+├── frontend-preact/   # Preact frontend (esbuild + Tailwind)
+│   ├── public/index.html
+│   ├── build.js         # Bundles src/main.jsx + inlines CSS/JS to dist/index.html
+│   └── src/
+│       ├── main.jsx         # Mounts App.jsx
+│       ├── App.jsx          # Launcher/workspace shell
+│       ├── backend.js       # window.* Zig bridge with browser mocks
+│       ├── backend-status.jsx
+│       ├── toolkit.css      # Dark toolkit theme (ported from Svelte shell)
+│       └── plugins/         # Registered tool plugins and views
+├── archive/svelte-view/ # Previous Svelte frontend (archived, not built)
 └── lib/               # Shared libraries
 ```
 
@@ -60,7 +61,7 @@ sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev
 zig build run
 
 # Or step by step:
-cd src/view && npm install && npm run build && cd ../..
+cd frontend-preact && npm install && npm run build && cd ..
 zig build
 ./zig-out/bin/webview-app
 ```
@@ -75,21 +76,19 @@ zig build dev
 
 ## How It Works
 
-1. **Frontend**: Svelte 5 app built with Vite. The `vite-plugin-singlefile` inlines all JS/CSS into a single HTML file.
+1. **Frontend**: Preact app built with esbuild. A custom `single-file-html` plugin inlines all JS/CSS into `frontend-preact/dist/index.html`. `build.zig` stages that file to `src/frontend-dist/index.html` (Zig 0.16 only allows `@embedFile` inside the `src/` package tree).
 
 2. **Backend**: Zig compiles the webview library and embeds the built HTML using `@embedFile`. Functions are bound to the JS context using the `Easy` API.
 
 3. **Communication**: The frontend calls Zig functions via `window.functionName()`, which return Promises resolved by the Zig backend.
 
-4. **Launcher**: The frontend starts as a workspace launcher. Selecting a tool enters native fullscreen mode; the workspace title bar provides launcher navigation and native window actions.
+4. **Launcher**: The frontend starts as a workspace launcher. Selecting a tool keeps the configured native window size; fixed sidebars provide persistent navigation while the workspace title bar provides native window actions.
 
 ### Plugin Architecture
 
-The current frontend is still the active default frontend; it has not been
-swapped. Its entrypoint is selected through `src/view/src/frontends/index.js`,
-so another complete frontend can be introduced by registering a component
-without changing the native host. The default shell discovers tools from
-`src/view/src/plugins/index.js`. Each tool plugin owns its manifest and Svelte
+The Preact shell (`frontend-preact/src/App.jsx`) is the active frontend.
+The shell discovers tools from
+`frontend-preact/src/plugins/index.js`. Each tool plugin owns its manifest and Preact
 view, while the shell owns navigation and window lifecycle behavior.
 
 The backend uses the same boundary in `src/backend/plugin.zig`. A backend
@@ -98,8 +97,8 @@ entrypoint registers the ordered plugin list instead of binding individual RPCs
 itself. Feature plugins can therefore be added under `src/backend/` without
 changing the host setup beyond registration.
 
-To add a frontend tool, create a Svelte view and manifest under
-`src/view/src/plugins/`, then add the manifest to the registry. To add backend
+To add a frontend tool, create a Preact view and manifest under
+`frontend-preact/src/plugins/`, then add the manifest to the registry. To add backend
 capabilities, create a `register(comptime Easy: type)` function under
 `src/backend/` and add its descriptor to `backend_plugins` in `src/main.zig`.
 
@@ -120,7 +119,7 @@ pub fn myFunction(self: *Context, req: Easy.Request) !void {
 try easy.bind(.myFunction);
 ```
 
-3. Declare the type in `src/view/bindings.d.ts`:
+3. Declare the type in `frontend-preact/src/bindings.d.ts`:
 
 ```typescript
 interface Window {
@@ -128,12 +127,11 @@ interface Window {
 }
 ```
 
-4. Call it from Svelte:
+4. Call it from Preact (via `src/backend.js`, which mocks bindings in the browser):
 
-```svelte
-<script>
-  const result = await window.myFunction();
-</script>
+```jsx
+import { backend } from "./backend.js";
+const result = await backend.myFunction?.() ?? window.myFunction();
 ```
 
 ## License

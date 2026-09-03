@@ -21,8 +21,6 @@ vi.mock("jspdf", () => ({
 import App from "./App.svelte";
 
 const nativeBindings = [
-  "enterFullscreen",
-  "exitFullscreen",
   "minimizeWindow",
   "maximizeWindow",
   "restoreWindow",
@@ -47,7 +45,7 @@ async function openNotes() {
 }
 
 describe("tool launcher", () => {
-  it("lists the toolkit and opens Chain Notes fullscreen", async () => {
+  it("lists the toolkit and opens Chain Notes in the native window", async () => {
     render(App);
 
     expect(screen.getAllByRole("button", { name: /Disk Scanner/ })).toHaveLength(2);
@@ -57,7 +55,7 @@ describe("tool launcher", () => {
     await fireEvent.click(screen.getByRole("button", { name: /Chain Notes.*Capture connected thoughts/ }));
 
     await waitFor(() => expect(screen.getByText("Notebook")).not.toBeNull());
-    expect(window.enterFullscreen).toHaveBeenCalledOnce();
+    expect(window.enterFullscreen).toBeUndefined();
     expect(screen.getByText("Local draft")).not.toBeNull();
   });
 
@@ -74,11 +72,11 @@ describe("tool launcher", () => {
     await waitFor(() => expect(screen.getByText("Notebook")).not.toBeNull());
     await fireEvent.click(screen.getByRole("button", { name: /01 Disk Scanner/ }));
     expect(screen.getByText("Scan target")).not.toBeNull();
-    expect(window.enterFullscreen).toHaveBeenCalledTimes(3);
+    expect(window.enterFullscreen).toBeUndefined();
 
     await fireEvent.click(screen.getByRole("button", { name: "Open home launcher" }));
     await waitFor(() => expect(screen.getByText("Pick a tool.")).not.toBeNull());
-    expect(window.exitFullscreen).toHaveBeenCalledTimes(3);
+    expect(window.exitFullscreen).toBeUndefined();
   });
 });
 

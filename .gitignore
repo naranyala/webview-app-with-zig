@@ -13,8 +13,12 @@ zig-pkg/
 *.dll
 
 # Frontend dependencies and build output
-src/view/node_modules/
-src/view/dist/
+archive/svelte-view/node_modules/
+archive/svelte-view/dist/
+frontend-preact/node_modules/
+frontend-preact/public/assets/
+frontend-preact/dist/
+src/frontend-dist/
 
 # Package-manager and build logs
 npm-debug.log*
