@@ -1,9 +1,9 @@
 # Testing
 
-Two layers: Zig unit tests plus Node check scripts, all reachable from one
-command. CI (`.github/workflows/ci.yml`: GTK/WebKitGTK + Zig 0.16.0 +
-Node 20) runs dependency checks, `zig build test --summary all`, and
-`zig build`.
+Three layers: Zig unit tests, Node check scripts, and vitest component
+tests, all reachable from one command. CI
+(`.github/workflows/ci.yml`: GTK/WebKitGTK + Zig 0.16.0 + Node 20) runs
+dependency checks, `zig build test --summary all`, and `zig build`.
 
 ## Commands
 
@@ -13,7 +13,8 @@ Node 20) runs dependency checks, `zig build test --summary all`, and
 | `zig build` | Full frontend build + native binary |
 | `zig build run` / `./run.sh` | Build and launch the GUI |
 | `zig build dev` | Frontend dev server |
-| `cd frontend-preact && npm test` | All `check-*.mjs` suites in order |
+| `cd frontend-preact && npm test` | All `check-*.mjs` suites in order, then vitest component tests |
+| `npm run test:components` | `vitest run` over `src/**/*.test.jsx` (jsdom) |
 | `npm run check` | Biome lint + format over the frontend |
 | `npm run check:bindings` | `bindings.d.ts` + `backend.js` in sync with `bound_names` (14) |
 | `npm run build` | `check` + `check:bindings` + single-file `dist/index.html` |
@@ -33,6 +34,20 @@ Node 20) runs dependency checks, `zig build test --summary all`, and
 | `check-note-pdf-benchmark` | Single + chain budgets (2 s / 5 s per engine) |
 | `check-paper-pdf` | Per-engine paper render, raster figures, fallback |
 | `check-paper-pdf-benchmark` | Sample-paper budget (5 s per engine) |
+
+## Component tests (`vitest run`)
+
+`frontend-preact/vitest.config.js`: jsdom environment, first-party
+`@preact/preset-vite` for JSX, and an alias swapping the compile-time
+StyleX runtime for `test/stylex-stub.js` (`create` = identity, `props`
+returns a fixed class name — components under test only read `className`).
+Suites live next to the code as `src/**/*.test.jsx`; today that is
+`src/plugins/todo.test.jsx` (empty render, add, toggle, status filter,
+calendar-month render). Pure logic stays in `check-*.mjs`; vitest covers
+rendered-component behavior only. Note: pinned `esbuild@0.25` conflicts
+with vite's peer range, so `package.json` pins `"overrides":
+{ "esbuild": "$esbuild" }` — plain `npm install` / `npm ci` work with no
+flags and the committed lockfile keeps CI deterministic.
 
 ## Benchmarks
 

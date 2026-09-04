@@ -1209,55 +1209,6 @@ export const styles = stylex.create({
     whiteSpace: 'nowrap',
     border: 0
   },
-  todoShell: {
-    minHeight: '100dvh',
-    width: '100%',
-    padding: '1rem',
-    backgroundImage:
-      'radial-gradient(circle at 12% 4%, #d1ef77 0, transparent 25rem), radial-gradient(circle at 92% 80%, #c6e9d6 0, transparent 28rem)',
-    backgroundColor: '#e9f2df',
-    color: '#123c32',
-    '@media (min-width: 640px)': { padding: '1.5rem 1.25rem 2.5rem' }
-  },
-  todoContainer: { width: '100%', maxWidth: '36rem', margin: '0 auto' },
-  todoHeader: {
-    display: 'flex',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    gap: '1rem',
-    marginBottom: '1rem'
-  },
-  todoIntro: {
-    maxWidth: '10rem',
-    paddingBottom: '0.25rem',
-    color: 'rgba(18, 60, 50, 0.6)',
-    fontSize: '0.75rem',
-    lineHeight: 1.25,
-    textAlign: 'right',
-    '@media (max-width: 639px)': { display: 'none' }
-  },
-  todoTitle: {
-    margin: 0,
-    color: '#064e3b',
-    fontSize: 'clamp(2.25rem, 10vw, 3rem)',
-    fontWeight: 900,
-    letterSpacing: '-0.06em',
-    lineHeight: 1
-  },
-  todoCard: {
-    overflow: 'hidden',
-    border: '1px solid rgba(18, 60, 50, 0.1)',
-    borderRadius: '1.5rem',
-    backgroundColor: 'white',
-    boxShadow: '0 12px 40px rgba(20, 66, 54, 0.14)'
-  },
-  todoRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-    padding: '0.75rem 1rem',
-    borderBottom: '1px solid rgba(18, 60, 50, 0.1)'
-  },
   todoToggleAll: {
     flexShrink: 0,
     padding: '0.25rem 0.5rem',
@@ -1267,21 +1218,7 @@ export const styles = stylex.create({
     fontSize: '1.5rem',
     lineHeight: 1
   },
-  todoInput: {
-    minWidth: 0,
-    flex: 1,
-    border: 0,
-    outline: 0,
-    backgroundColor: 'transparent',
-    color: '#064e3b',
-    fontSize: '1rem'
-  },
   todoList: { margin: 0, padding: 0, listStyle: 'none' },
-  todoItem: {
-    padding: '0.75rem 1rem',
-    borderBottom: '1px solid rgba(18, 60, 50, 0.1)'
-  },
-  todoView: { display: 'flex', alignItems: 'center', gap: '0.75rem' },
   todoCheckbox: {
     flexShrink: 0,
     width: 24,
@@ -1292,91 +1229,104 @@ export const styles = stylex.create({
     borderRadius: '50%',
     ':checked': { borderColor: '#047857', backgroundColor: '#047857' }
   },
-  todoLabel: {
-    minWidth: 0,
-    flex: 1,
-    cursor: 'text',
-    overflowWrap: 'break-word',
-    color: '#064e3b',
-    fontSize: '1rem',
-    lineHeight: 1.5
-  },
-  todoCompleted: {
-    color: 'rgba(6, 78, 59, 0.35)',
-    textDecorationLine: 'line-through'
-  },
-  todoDestroy: {
-    flexShrink: 0,
-    padding: '0.25rem 0.5rem',
-    borderRadius: 999,
-    backgroundColor: 'transparent',
-    color: 'rgba(6, 78, 59, 0.3)',
-    fontSize: '1.25rem',
-    opacity: 1,
-    ':hover': { backgroundColor: '#fce7f3', color: '#e11d48' },
-    ':focus-visible': { opacity: 1 },
-    '@media (hover: none)': { opacity: 1 }
-  },
-  todoEdit: {
-    width: '100%',
-    padding: '0.75rem 1rem',
-    border: '2px solid #a3e635',
-    borderRadius: 12,
-    outline: 0,
-    backgroundColor: '#f7fee7',
-    color: '#064e3b',
-    fontSize: '1.125rem'
-  },
-  todoFooter: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: '0.5rem',
-    padding: '0.75rem 1rem',
-    color: 'rgba(6, 78, 59, 0.6)',
-    fontSize: '0.875rem'
-  },
-  todoCount: { marginRight: 'auto' },
-  todoStrong: { color: '#064e3b', fontWeight: 700 },
   todoFilters: { display: 'flex', alignItems: 'center', gap: '0.25rem' },
-  todoFilter: {
-    padding: '0.375rem 0.75rem',
+  taskRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.6rem',
+    minHeight: 48,
+    padding: '0.45rem 0.2rem',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.06)'
+  },
+  taskLabel: {
+    minWidth: 0,
+    overflowWrap: 'break-word',
+    color: c.text,
+    fontSize: '0.88rem',
+    lineHeight: 1.45,
+    cursor: 'text'
+  },
+  taskDone: { color: c.muted, textDecorationLine: 'line-through' },
+  taskDestroy: {
+    flexShrink: 0,
+    minHeight: 36,
+    minWidth: 36,
+    padding: '0.25rem',
     borderRadius: 8,
     backgroundColor: 'transparent',
-    color: '#064e3b',
-    fontWeight: 600,
-    textTransform: 'capitalize'
+    color: c.muted,
+    fontSize: '1.1rem',
+    lineHeight: 1,
+    ':hover': { backgroundColor: '#b54d4d', color: 'white' }
   },
-  todoFilterActive: { backgroundColor: '#ecfccb' },
-  todoClear: {
-    alignSelf: 'flex-start',
-    padding: '0.375rem 0.5rem',
-    borderRadius: 8,
+  dueText: {
+    flexShrink: 0,
+    padding: '0.15rem 0.55rem',
+    border: '1px solid rgba(247, 198, 107, 0.35)',
+    borderRadius: 100,
     backgroundColor: 'transparent',
-    color: 'rgba(6, 78, 59, 0.6)',
-    fontWeight: 600,
-    '@media (min-width: 640px)': { alignSelf: 'auto' }
+    color: c.gold,
+    fontFamily: 'monospace',
+    fontSize: '0.62rem',
+    whiteSpace: 'nowrap'
   },
-  todoEmpty: {
-    padding: '2.5rem 1.25rem',
-    borderBottom: '1px solid rgba(18, 60, 50, 0.1)',
-    color: 'rgba(6, 78, 59, 0.5)',
+  dueOverdue: { borderColor: 'rgba(255, 179, 191, 0.5)', color: '#ffb3bf' },
+  dueInput: {
+    flexShrink: 0,
+    width: '8.2rem',
+    minHeight: 44,
+    padding: '0.5rem',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: 8,
+    outline: 0,
+    backgroundColor: c.panelAlt,
+    color: c.text,
+    colorScheme: 'dark',
+    fontSize: '0.75rem',
+    ':focus': { borderColor: c.gold }
+  },
+  calGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(7, 1fr)',
+    gap: 2,
+    marginTop: '0.8rem'
+  },
+  calDow: {
+    paddingBottom: '0.3rem',
+    color: c.muted,
+    fontSize: '0.62rem',
+    fontWeight: 700,
     textAlign: 'center'
   },
-  todoHint: {
-    margin: '1rem 0 0',
-    color: 'rgba(6, 78, 59, 0.4)',
-    fontSize: '0.65rem',
-    fontWeight: 600,
-    letterSpacing: '0.16em',
-    textAlign: 'center',
-    textTransform: 'uppercase'
+  calCell: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    minHeight: 40,
+    padding: '0.2rem',
+    border: '1px solid transparent',
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+    color: c.text,
+    fontSize: '0.74rem',
+    ':hover': { backgroundColor: 'rgba(255, 255, 255, 0.06)' }
   },
-  todoSpacer: {
-    display: 'none',
-    minWidth: '8.5rem',
-    '@media (min-width: 640px)': { display: 'block' }
+  calSelected: {
+    borderColor: 'rgba(247, 198, 107, 0.5)',
+    backgroundColor: 'rgba(247, 198, 107, 0.08)'
   },
+  calToday: { color: c.gold, fontWeight: 800 },
+  calDots: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 2,
+    minHeight: 5
+  },
+  calDot: { width: 4, height: 4, borderRadius: '50%', backgroundColor: c.gold },
+  calDotDone: { backgroundColor: 'rgba(130, 201, 155, 0.65)' },
+  calCount: { color: c.muted, fontFamily: 'monospace', fontSize: '0.6rem' },
   coral: { color: c.coral },
   blue: { color: c.blue },
   gold: { color: c.gold },
@@ -1535,26 +1485,10 @@ const aliases = {
   'backend-status-value': 'backendValue',
   'backend-status-actions': 'backendActions',
   'backend-status-error': 'backendError',
-  'todo-shell': 'todoShell',
-  'todo-card': 'todoCard',
-  'new-todo-row': 'todoRow',
   'toggle-all': 'todoToggleAll',
-  'new-todo': 'todoInput',
   'todo-list': 'todoList',
-  'todo-item': 'todoItem',
-  view: 'todoView',
   'todo-checkbox': 'todoCheckbox',
-  'todo-label': 'todoLabel',
-  destroy: 'todoDestroy',
-  edit: 'todoEdit',
-  'todo-label-completed': 'todoCompleted',
-  'todo-footer': 'todoFooter',
-  'todo-count': 'todoCount',
   'todo-filters': 'todoFilters',
-  'todo-filter': 'todoFilter',
-  'clear-completed': 'todoClear',
-  'todo-empty': 'todoEmpty',
-  'todo-hint': 'todoHint',
   'sr-only': 'srOnly'
 };
 

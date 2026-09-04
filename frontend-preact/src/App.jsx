@@ -2,6 +2,12 @@ import { useMemo, useState } from 'preact/hooks';
 import { backend, backendError } from './backend.js';
 import { BackendStatus } from './backend-status.jsx';
 import { frontendPlugins, getFrontendPlugin } from './plugins/index.js';
+import {
+  buildMonthGrid,
+  formatDay,
+  shiftMonth,
+  todayISO
+} from './plugins/todo-calendar.js';
 import { styles, sx, toneStyle } from './stylex-styles.js';
 
 const TAB_SHORT = {
@@ -35,6 +41,10 @@ export function App() {
   const [quizMode, setQuizMode] = useState('session');
   const [paperOpen, setPaperOpen] = useState(false);
   const [paperMode, setPaperMode] = useState('read');
+  const [todoOpen, setTodoOpen] = useState(false);
+  const [todoMode, setTodoMode] = useState('tasks');
+  const [todoFocus, setTodoFocus] = useState(null);
+  const [todoCursor, setTodoCursor] = useState(() => todayISO().slice(0, 7));
   const [windowActionPending, setWindowActionPending] = useState(false);
   const [windowError, setWindowError] = useState('');
   const [windowMaximized, setWindowMaximized] = useState(false);
@@ -67,6 +77,7 @@ export function App() {
     setToolsOpen(TOOL_IDS.includes(appId));
     setQuizOpen(appId === 'quiz');
     setPaperOpen(appId === 'paper');
+    setTodoOpen(appId === 'todos');
     if (typeof document !== 'undefined') {
       const plugin = getFrontendPlugin(appId);
       document.title = plugin ? `${plugin.title} - WebView App` : 'WebView App';
@@ -81,6 +92,7 @@ export function App() {
     setToolsOpen(false);
     setQuizOpen(false);
     setPaperOpen(false);
+    setTodoOpen(false);
     if (typeof document !== 'undefined') {
       document.title = 'WebView App';
       window.scrollTo?.(0, 0);
@@ -142,6 +154,7 @@ export function App() {
                 return;
               }
               setQuizMode('session');
+              setTodoOpen(false);
               setQuizOpen((open) => !open);
               return;
             }
@@ -155,7 +168,22 @@ export function App() {
               setPaperMode('read');
               setToolsOpen(false);
               setQuizOpen(false);
+              setTodoOpen(false);
               setPaperOpen((open) => !open);
+              return;
+            }
+            if (app.id === 'todos') {
+              if (activeApp !== 'todos') {
+                selectApp(app.id);
+                setTodoMode('tasks');
+                setTodoOpen(true);
+                return;
+              }
+              setTodoMode('tasks');
+              setToolsOpen(false);
+              setQuizOpen(false);
+              setPaperOpen(false);
+              setTodoOpen((open) => !open);
               return;
             }
             selectApp(app.id);
@@ -166,14 +194,18 @@ export function App() {
               ? quizOpen
               : app.id === 'paper'
                 ? paperOpen
-                : undefined
+                : app.id === 'todos'
+                  ? todoOpen
+                  : undefined
           }
           aria-controls={
             app.id === 'quiz'
               ? 'quiz-panel'
               : app.id === 'paper'
                 ? 'paper-panel'
-                : undefined
+                : app.id === 'todos'
+                  ? 'todo-panel'
+                  : undefined
           }
           title={app.title}
         >
@@ -197,6 +229,7 @@ export function App() {
         onClick={() => {
           setQuizOpen(false);
           setPaperOpen(false);
+          setTodoOpen(false);
           setToolsOpen((open) => !open);
         }}
         aria-expanded={toolsOpen}
@@ -380,6 +413,120 @@ export function App() {
     </aside>
   );
 
+  const todoDestinations = [
+    {
+      mode: 'tasks',
+      glyph: '☰',
+      title: 'Tasks',
+      description: 'Capture and complete todos.'
+    },
+    {
+      mode: 'calendar',
+      glyph: '◫',
+      title: 'Calendar',
+      description: 'Browse due dates by month.'
+    }
+  ];
+  const todoGrid = buildMonthGrid(todoCursor);
+
+  const todoPanel = todoOpen && (
+    <aside
+      className={sx('quiz-panel')}
+      id="todo-panel"
+      aria-label="Todos submenu"
+    >
+      <p className={sx('tools-group-label')}>Todos</p>
+      <nav className={sx('sideNav')} aria-label="Todos destinations">
+        {todoDestinations.map((destination) => (
+          <button
+            type="button"
+            key={destination.mode}
+            className={sx(
+              'tools-item',
+              todoMode === destination.mode && styles.sideItemActive
+            )}
+            onClick={() => {
+              selectApp('todos');
+              setTodoMode(destination.mode);
+            }}
+            aria-current={todoMode === destination.mode ? 'page' : undefined}
+          >
+            <span
+              className={sx('tools-item-glyph', styles.goldMark)}
+              aria-hidden="true"
+            >
+              {destination.glyph}
+            </span>
+            <span className={sx('tools-item-copy')}>
+              <strong className={sx('sideCopyStrong')}>
+                {destination.title}
+              </strong>
+              <small className={sx('sideCopySmall')}>
+                {destination.description}
+              </small>
+            </span>
+          </button>
+        ))}
+      </nav>
+      <p className={sx('tools-group-label')}>Pick a day</p>
+      <div className={sx('notes-list-heading')}>
+        <button
+          type="button"
+          className={sx('text-button')}
+          onClick={() => setTodoCursor(shiftMonth(todoCursor, -1))}
+          aria-label="Previous month"
+        >
+          ‹
+        </button>
+        <span className={sx('panel-label')}>{todoGrid.label}</span>
+        <button
+          type="button"
+          className={sx('text-button')}
+          onClick={() => setTodoCursor(shiftMonth(todoCursor, 1))}
+          aria-label="Next month"
+        >
+          ›
+        </button>
+      </div>
+      <div className={sx('cal-grid')}>
+        {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((day) => (
+          <span key={day} className={sx('cal-dow')}>
+            {day}
+          </span>
+        ))}
+        {todoGrid.weeks.flat().map((cell, index) => {
+          if (!cell) return <span key={`blank-${index}`} />;
+          return (
+            <button
+              type="button"
+              key={cell.iso}
+              aria-label={`Pick ${cell.iso}`}
+              className={sx(
+                'cal-cell',
+                cell.iso === todoFocus && styles.calSelected,
+                cell.iso === todayISO() && styles.calToday
+              )}
+              onClick={() =>
+                setTodoFocus(todoFocus === cell.iso ? null : cell.iso)
+              }
+            >
+              <span>{cell.day}</span>
+            </button>
+          );
+        })}
+      </div>
+      {todoFocus && (
+        <button
+          type="button"
+          className={sx('chip')}
+          onClick={() => setTodoFocus(null)}
+        >
+          Due {formatDay(todoFocus)} ×
+        </button>
+      )}
+    </aside>
+  );
+
   if (activeApp === null) {
     return (
       <div className={sx('shell')}>
@@ -446,6 +593,7 @@ export function App() {
         {toolsPanel}
         {quizPanel}
         {paperPanel}
+        {todoPanel}
       </div>
     );
   }
@@ -539,8 +687,15 @@ export function App() {
               ? quizMode
               : activeApp === 'paper'
                 ? paperMode
-                : undefined
+                : activeApp === 'todos'
+                  ? todoMode
+                  : undefined
           }
+          focusDate={activeApp === 'todos' ? todoFocus : undefined}
+          onFocusDate={setTodoFocus}
+          cursor={activeApp === 'todos' ? todoCursor : undefined}
+          onCursor={setTodoCursor}
+          onPickDate={() => setTodoMode('tasks')}
         />
       </main>
 
@@ -548,6 +703,7 @@ export function App() {
       {toolsPanel}
       {quizPanel}
       {paperPanel}
+      {todoPanel}
     </div>
   );
 }

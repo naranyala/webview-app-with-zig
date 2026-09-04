@@ -1,5 +1,13 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { styles, sx } from '../stylex-styles.js';
+import {
+  buildMonthGrid,
+  countByDate,
+  formatDay,
+  isDueDate,
+  shiftMonth,
+  todayISO
+} from './todo-calendar.js';
 import {
   onHashChange,
   readHash,
@@ -10,6 +18,7 @@ import {
 
 const STORAGE_KEY = 'preact-todomvc.todos';
 const FILTERS = ['all', 'active', 'completed'];
+const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 
 function createId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -20,42 +29,66 @@ function readFilter() {
   return FILTERS.includes(hashFilter) ? hashFilter : 'all';
 }
 
+function normalizeTodo(todo) {
+  if (
+    !todo ||
+    typeof todo.id !== 'string' ||
+    typeof todo.title !== 'string' ||
+    typeof todo.completed !== 'boolean'
+  ) {
+    return null;
+  }
+  return {
+    id: todo.id,
+    title: todo.title,
+    completed: todo.completed,
+    due: isDueDate(todo.due) ? todo.due : null
+  };
+}
+
 function loadTodos() {
   try {
     const savedTodos = JSON.parse(storageGet(STORAGE_KEY));
-    if (!Array.isArray(savedTodos)) {
-      return [];
-    }
-
-    return savedTodos.filter(
-      (todo) =>
-        todo &&
-        typeof todo.id === 'string' &&
-        typeof todo.title === 'string' &&
-        typeof todo.completed === 'boolean'
-    );
+    if (!Array.isArray(savedTodos)) return [];
+    return savedTodos.map(normalizeTodo).filter(Boolean);
   } catch {
     return [];
   }
 }
 
-export function TodoApp() {
+export function TodoApp({
+  mode = 'tasks',
+  focusDate = null,
+  onFocusDate = () => {},
+  cursor = todayISO().slice(0, 7),
+  onCursor = () => {},
+  onPickDate = null
+}) {
   const [todos, setTodos] = useState(loadTodos);
   const [newTodo, setNewTodo] = useState('');
+  const [newDue, setNewDue] = useState('');
   const [filter, setFilter] = useState(readFilter);
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState('');
+  const [editDue, setEditDue] = useState('');
   const editInputRef = useRef(null);
   const cancelEditRef = useRef(false);
 
+  const today = todayISO();
+  const focus = isDueDate(focusDate) ? focusDate : null;
+  const counts = useMemo(() => countByDate(todos), [todos]);
   const activeCount = todos.reduce(
     (count, todo) => count + (todo.completed ? 0 : 1),
     0
   );
   const completedCount = todos.length - activeCount;
+  const dueTodayCount = todos.filter(
+    (todo) => !todo.completed && todo.due === today
+  ).length;
   const visibleTodos = todos.filter((todo) => {
-    if (filter === 'active') return !todo.completed;
-    if (filter === 'completed') return todo.completed;
+    if (filter === 'active' && todo.completed) return false;
+    if (filter === 'completed' && !todo.completed) return false;
+    if (focus && todo.due !== focus) return false;
     return true;
   });
 
@@ -79,12 +112,14 @@ export function TodoApp() {
     event.preventDefault();
     const title = newTodo.trim();
     if (!title) return;
+    const due = isDueDate(newDue) ? newDue : focus || null;
 
     setTodos((currentTodos) => [
       ...currentTodos,
-      { id: createId(), title, completed: false }
+      { id: createId(), title, completed: false, due }
     ]);
     setNewTodo('');
+    setNewDue('');
   }
 
   function toggleTodo(id) {
@@ -111,12 +146,14 @@ export function TodoApp() {
     cancelEditRef.current = false;
     setEditingId(todo.id);
     setEditValue(todo.title);
+    setEditDue(todo.due || '');
   }
 
   function cancelEditing() {
     cancelEditRef.current = true;
     setEditingId(null);
     setEditValue('');
+    setEditDue('');
   }
 
   function finishEditing(save) {
@@ -126,6 +163,7 @@ export function TodoApp() {
       cancelEditRef.current = false;
       setEditingId(null);
       setEditValue('');
+      setEditDue('');
       return;
     }
 
@@ -143,6 +181,17 @@ export function TodoApp() {
 
     setEditingId(null);
     setEditValue('');
+    setEditDue('');
+  }
+
+  function saveDue(id, value) {
+    setTodos((currentTodos) =>
+      currentTodos.map((todo) =>
+        todo.id === id
+          ? { ...todo, due: isDueDate(value) ? value : null }
+          : todo
+      )
+    );
   }
 
   function chooseFilter(nextFilter) {
@@ -154,138 +203,295 @@ export function TodoApp() {
     setTodos((currentTodos) => currentTodos.filter((todo) => !todo.completed));
   }
 
-  return (
-    <main className={sx('todo-shell')}>
-      <div className={sx('todo-container')}>
-        <header className={sx('todo-header')}>
+  function pickDay(iso) {
+    onFocusDate(iso);
+    if (onPickDate) onPickDate();
+  }
+
+  if (mode === 'calendar') {
+    const grid = buildMonthGrid(cursor);
+    return (
+      <section className={sx('tool-page')}>
+        <div className={sx('tool-heading')}>
           <div>
-            <p className={sx('eyebrow')}>Keep it light</p>
-            <h1 className={sx('todo-title')}>todos</h1>
+            <p className={sx('eyebrow')}>Planner</p>
+            <h1 className={sx('page-title')}>Calendar</h1>
+            <p className={sx('lede')}>
+              {todos.length} tasks · {dueTodayCount} due today · pick a day to
+              filter the list
+            </p>
           </div>
-          <p className={sx('todo-intro')}>Capture what matters.</p>
-        </header>
+        </div>
 
-        <section className={sx('todo-card')} aria-label="Todo list">
-          <form className={sx('new-todo-row')} onSubmit={addTodo}>
+        <div className={sx('tool-panel')}>
+          <div className={sx('notes-list-heading')}>
             <button
-              className={sx('toggle-all')}
               type="button"
-              aria-label={
-                activeCount > 0 ? 'Complete all todos' : 'Mark all todos active'
-              }
-              onClick={toggleAll}
-              disabled={todos.length === 0}
+              className={sx('text-button')}
+              onClick={() => onCursor(shiftMonth(cursor, -1))}
+              aria-label="Previous month"
             >
-              ↓
+              ‹
             </button>
-            <input
-              className={sx('new-todo')}
-              value={newTodo}
-              onInput={(event) => setNewTodo(event.currentTarget.value)}
-              placeholder="What needs doing?"
-              aria-label="New todo"
-              autoComplete="off"
-            />
-          </form>
-
-          {todos.length > 0 && (
-            <ul className={sx('todo-list')} aria-live="polite">
-              {visibleTodos.map((todo) => (
-                <li className={sx('todo-item')} key={todo.id}>
-                  {editingId === todo.id ? (
-                    <input
-                      className={sx('edit')}
-                      ref={editInputRef}
-                      value={editValue}
-                      onInput={(event) =>
-                        setEditValue(event.currentTarget.value)
-                      }
-                      onBlur={() => finishEditing(true)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') finishEditing(true);
-                        if (event.key === 'Escape') {
-                          cancelEditing();
-                        }
-                      }}
-                      aria-label="Edit todo"
-                    />
-                  ) : (
-                    <div className={sx('view')}>
-                      <input
-                        className={sx('todo-checkbox')}
-                        id={`todo-${todo.id}`}
-                        type="checkbox"
-                        checked={todo.completed}
-                        onChange={() => toggleTodo(todo.id)}
-                      />
-                      <label
-                        className={sx(
-                          'todo-label',
-                          todo.completed && styles.todoCompleted
-                        )}
-                        htmlFor={`todo-${todo.id}`}
-                        onDblClick={() => beginEditing(todo)}
-                      >
-                        {todo.title}
-                      </label>
-                      <button
-                        className={sx('destroy')}
-                        type="button"
-                        onClick={() => deleteTodo(todo.id)}
-                        aria-label={`Delete ${todo.title}`}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {todos.length > 0 && (
-            <footer className={sx('todo-footer')}>
-              <span className={sx('todo-count')}>
-                <strong className={sx('todo-strong')}>{activeCount}</strong>{' '}
-                {activeCount === 1 ? 'item' : 'items'} left
+            <span className={sx('panel-label')}>{grid.label}</span>
+            <button
+              type="button"
+              className={sx('text-button')}
+              onClick={() => onCursor(shiftMonth(cursor, 1))}
+              aria-label="Next month"
+            >
+              ›
+            </button>
+            <button
+              type="button"
+              className={sx('text-button')}
+              onClick={() => onCursor(today.slice(0, 7))}
+            >
+              Today
+            </button>
+          </div>
+          <div className={sx('cal-grid')}>
+            {WEEKDAYS.map((day) => (
+              <span key={day} className={sx('cal-dow')}>
+                {day}
               </span>
-              <nav className={sx('todo-filters')} aria-label="Todo filters">
-                {FILTERS.map((filterName) => (
-                  <button
-                    className={sx(
-                      'todo-filter',
-                      filter === filterName && styles.todoFilterActive
-                    )}
-                    type="button"
-                    onClick={() => chooseFilter(filterName)}
-                    aria-current={filter === filterName ? 'page' : undefined}
-                    key={filterName}
-                  >
-                    {filterName}
-                  </button>
-                ))}
-              </nav>
-              {completedCount > 0 ? (
+            ))}
+            {grid.weeks.flat().map((cell, index) => {
+              if (!cell) return <span key={`blank-${index}`} />;
+              const entry = counts.get(cell.iso) || { total: 0, done: 0 };
+              const active = entry.total - entry.done;
+              return (
                 <button
-                  className={sx('clear-completed')}
                   type="button"
-                  onClick={clearCompleted}
+                  key={cell.iso}
+                  aria-label={`${cell.iso}, ${entry.total} tasks`}
+                  className={sx(
+                    'cal-cell',
+                    cell.iso === focus && styles.calSelected,
+                    cell.iso === today && styles.calToday
+                  )}
+                  onClick={() => pickDay(cell.iso)}
                 >
-                  Clear completed
+                  <span>{cell.day}</span>
+                  {entry.total > 0 && (
+                    <span className={sx('cal-dots')} aria-hidden="true">
+                      {entry.total <= 3 ? (
+                        Array.from({ length: entry.total }, (_, dot) => (
+                          <span
+                            key={dot}
+                            className={sx(
+                              'cal-dot',
+                              dot >= active && styles.calDotDone
+                            )}
+                          />
+                        ))
+                      ) : (
+                        <span className={sx('cal-count')}>{entry.total}</span>
+                      )}
+                    </span>
+                  )}
                 </button>
-              ) : (
-                <span className={sx('todo-spacer')} aria-hidden="true" />
-              )}
-            </footer>
-          )}
+              );
+            })}
+          </div>
+        </div>
+        <p className={sx('empty-notes')}>
+          Gold dots are open tasks, dim dots are done. Picking a day filters
+          Tasks and jumps there.
+        </p>
+      </section>
+    );
+  }
 
-          {todos.length > 0 && visibleTodos.length === 0 && (
-            <p className={sx('todo-empty')}>Nothing here right now.</p>
-          )}
-        </section>
-
-        <p className={sx('todo-hint')}>Double-tap to edit</p>
+  return (
+    <section className={sx('tool-page')}>
+      <div className={sx('tool-heading')}>
+        <div>
+          <p className={sx('eyebrow')}>Planner</p>
+          <h1 className={sx('page-title')}>Todos</h1>
+          <p className={sx('lede')}>
+            {activeCount} open · {dueTodayCount} due today
+          </p>
+        </div>
+        {focus && (
+          <button
+            type="button"
+            className={sx('chip')}
+            onClick={() => onFocusDate(null)}
+          >
+            Due {formatDay(focus)} ×
+          </button>
+        )}
       </div>
-    </main>
+
+      <div className={sx('tool-panel')}>
+        <form className={sx('notes-list-heading')} onSubmit={addTodo}>
+          <button
+            className={sx('toggle-all')}
+            type="button"
+            aria-label={
+              activeCount > 0 ? 'Complete all todos' : 'Mark all todos active'
+            }
+            onClick={toggleAll}
+            disabled={todos.length === 0}
+          >
+            ↓
+          </button>
+          <input
+            className={sx('search-field')}
+            value={newTodo}
+            onInput={(event) => setNewTodo(event.currentTarget.value)}
+            placeholder={
+              focus ? `Add a task due ${formatDay(focus)}…` : 'Add a task…'
+            }
+            aria-label="New todo"
+            autoComplete="off"
+            style={{ flex: 1 }}
+          />
+          <input
+            className={sx('due-input')}
+            type="date"
+            value={newDue}
+            onInput={(event) => setNewDue(event.currentTarget.value)}
+            aria-label="Due date for new todo"
+          />
+          <button type="submit" className={sx('new-note-button')}>
+            + Add
+          </button>
+        </form>
+
+        {todos.length > 0 && (
+          <ul className={sx('todo-list')} aria-live="polite">
+            {visibleTodos.map((todo) => (
+              <li className={sx('task-row')} key={todo.id}>
+                {editingId === todo.id ? (
+                  <input
+                    className={sx('search-field')}
+                    ref={editInputRef}
+                    value={editValue}
+                    onInput={(event) => setEditValue(event.currentTarget.value)}
+                    onBlur={() => finishEditing(true)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') finishEditing(true);
+                      if (event.key === 'Escape') {
+                        cancelEditing();
+                      }
+                    }}
+                    aria-label="Edit todo"
+                    style={{ flex: 1 }}
+                  />
+                ) : (
+                  <input
+                    className={sx('todo-checkbox')}
+                    id={`todo-${todo.id}`}
+                    type="checkbox"
+                    checked={todo.completed}
+                    onChange={() => toggleTodo(todo.id)}
+                  />
+                )}
+                {editingId === todo.id ? (
+                  <input
+                    className={sx('due-input')}
+                    type="date"
+                    value={editDue}
+                    onInput={(event) => {
+                      const next = event.currentTarget.value;
+                      setEditDue(next);
+                      saveDue(todo.id, next);
+                    }}
+                    aria-label="Due date"
+                  />
+                ) : (
+                  <label
+                    className={sx(
+                      'task-label',
+                      todo.completed && styles.taskDone
+                    )}
+                    htmlFor={`todo-${todo.id}`}
+                    onDblClick={() => beginEditing(todo)}
+                    style={{ flex: 1 }}
+                  >
+                    {todo.title}
+                  </label>
+                )}
+                {editingId !== todo.id && todo.due && (
+                  <button
+                    type="button"
+                    className={sx(
+                      'due-text',
+                      !todo.completed && todo.due < today && styles.dueOverdue
+                    )}
+                    onClick={() => saveDue(todo.id, '')}
+                    title="Clear due date"
+                    aria-label={`Clear due date ${todo.due}`}
+                  >
+                    {formatDay(todo.due)}
+                  </button>
+                )}
+                <button
+                  className={sx('task-destroy')}
+                  type="button"
+                  onClick={() =>
+                    editingId === todo.id
+                      ? cancelEditing()
+                      : deleteTodo(todo.id)
+                  }
+                  aria-label={
+                    editingId === todo.id
+                      ? 'Cancel editing'
+                      : `Delete ${todo.title}`
+                  }
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {todos.length > 0 && (
+          <div className={sx('note-editor-footer')}>
+            <span>
+              <strong>{activeCount}</strong>{' '}
+              {activeCount === 1 ? 'item' : 'items'} left
+            </span>
+            <nav className={sx('todo-filters')} aria-label="Todo filters">
+              {FILTERS.map((filterName) => (
+                <button
+                  className={sx(
+                    'chip',
+                    filter === filterName && styles.sideItemActive
+                  )}
+                  type="button"
+                  onClick={() => chooseFilter(filterName)}
+                  aria-current={filter === filterName ? 'page' : undefined}
+                  key={filterName}
+                >
+                  {filterName}
+                </button>
+              ))}
+            </nav>
+            {completedCount > 0 && (
+              <button
+                className={sx('text-button')}
+                type="button"
+                onClick={clearCompleted}
+              >
+                Clear completed
+              </button>
+            )}
+          </div>
+        )}
+
+        {todos.length > 0 && visibleTodos.length === 0 && (
+          <p className={sx('empty-notes')}>Nothing here right now.</p>
+        )}
+        {todos.length === 0 && (
+          <p className={sx('empty-notes')}>
+            No tasks yet. Double-click a task to edit it.
+          </p>
+        )}
+      </div>
+    </section>
   );
 }

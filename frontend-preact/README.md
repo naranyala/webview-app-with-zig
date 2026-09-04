@@ -24,9 +24,12 @@ npm run check:write    # apply safe Biome fixes
 
 `npm run build` runs `npm run check` before creating production assets.
 
-The Todos tool supports adding todos, completing and deleting them, double-clicking
-to edit, toggling all todos, URL-hash filters for all/active/completed, clear
-completed, and local storage persistence.
+The Todos tool supports adding todos with optional due dates, completing and
+deleting them, double-clicking to edit, toggling all todos, URL-hash filters
+for all/active/completed, clear completed, and local storage persistence. The
+Todos sidebar expands into Tasks and Calendar destinations with a monthly
+picker; picking a day filters the list, and the full calendar shows per-day
+dots for open and done tasks.
 
 Chain Notes stores external AI conversations as local question-and-answer records.
 Use `Import external chat` with `Question`/`Answer`, `Q`/`A`, `User`/`Assistant`,

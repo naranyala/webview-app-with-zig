@@ -63,7 +63,7 @@ the three items here are the integration milestones for that work.
 - [ ] Add spaced repetition, shuffled sessions, answer confidence levels, and session history to Quiz.
 - [x] Add a frontend mock bridge so the UI can run independently under Vite. Implemented: `frontend-preact/src/backend.js` falls back to mocks when `window.*` bindings are absent (`__PREACT_MOCK_BRIDGE__` opts out); `npm run dev` / `npm run serve` serve the UI in the browser.
 - [x] Add a typed bridge client for all Zig calls with backend-unavailable, timeout, and validation states (cf. webview-app-with-vlang `ui/src/lib/backend.ts` + `backend.test.ts`). Implemented: `frontend-preact/src/backend.js` normalizes every failure to `{code, message}` (`errorDetails()` handles envelopes, bare error names, timeouts, unavailable bindings, client-side validation), enforces a configurable timeout (default 5s), validates `increment` deltas locally, and `BackendStatus` probes `getStatus` on mount. Covered by `frontend-preact/check-backend-errors.mjs` (`npm test`, wired into `zig build test`).
-- [ ] Add frontend component tests for counter and Notes interactions. Bridge-level CRUD and backend error behavior is covered by `check-backend-errors.mjs`; Preact component rendering is still untested.
+- [x] Add frontend component tests for Todo interactions. Bridge-level CRUD and backend error behavior is covered by `check-backend-errors.mjs`; rendering is now covered by `vitest` + `@testing-library/preact` + `jsdom` (see `Third-Party Library Adoption Plan`, phase 1). Implemented: `frontend-preact/vitest.config.js` (esbuild JSX + `@stylexjs/stylex` stub), `test/stylex-stub.js`, `src/plugins/todo.test.jsx` (render, add, toggle, filter), wired into `npm test` as `test:components`.
 - [ ] Add a proper application-level design system and theme configuration.
 - [x] Add a production error boundary or fallback screen. Implemented: `frontend-preact/src/error-boundary.jsx` (`ErrorBoundary` with reload recovery) wrapping `<App />` in `src/main.jsx`.
 - [ ] Verify `ErrorBoundary` against the pinned Preact version (`getDerivedStateFromError` support) with a render test; give the Notes and Todos tabs distinct tones (both are `gold` today).
@@ -105,6 +105,11 @@ the three items here are the integration milestones for that work.
 
 ### Recommended New Libraries
 
+Constraint baseline for every adoption: the frontend ships as one offline
+embedded file (bundle weight matters), Zig 0.16 churn breaks community
+packages regularly (prefer C-ABI libs via `@cImport`, which are immune), and
+the WebView sandbox allows no Node APIs, no CDN, and CSP-limited code.
+
 - Disk Scanner: no third-party library is required initially; Zig filesystem APIs and OS APIs are sufficient.
 - Disk Scanner persistence: SQLite for caching scan results.
 - Audio I/O: `miniaudio` for cross-platform audio devices and playback.
@@ -112,6 +117,85 @@ the three items here are the integration milestones for that work.
 - Spectrum analysis: `KissFFT` for FFT-based visualizer data.
 - Audio resampling: `libsamplerate` if sample-rate conversion is needed.
 - Prefer `KissFFT` over FFTW for a permissive license suitable for distribution.
+
+## Third-Party Library Adoption Plan
+
+Surveyed 2026-09 against the constraints above. Phases are ordered by
+value-per-risk; each phase lands behind the existing test gates
+(`npm run check`, `npm test`, `zig build test`).
+
+### Phase 1: component testing (execute first)
+
+- Add devDependencies `vitest` + `@testing-library/preact` + `jsdom`.
+- `frontend-preact/vitest.config.js`: `environment: jsdom` + `globals`
+  (auto-cleanup), first-party `@preact/preset-vite` for JSX (raw esbuild
+  `jsxImportSource` is ignored by the vite pipeline — use the preset),
+  alias `@stylexjs/stylex` to a tiny `test/stylex-stub.js` (`create` =
+  identity, `props` returns a fixed className) because real StyleX requires
+  its babel plugin at build time. Invoke via node directly
+  (`node node_modules/vitest/vitest.mjs run`) since installs use
+  `--no-bin-links`.
+- First suites: `src/plugins/todo.test.jsx` (render empty state, add todo,
+  toggle completion, status filter). Keep pure-logic suites in `check-*.mjs`;
+  vitest covers rendered-component behavior only.
+- New script `test:components` (`node node_modules/vitest/vitest.mjs run`),
+  appended to `npm test` so `zig build test` and CI pick it up with no
+  workflow changes.
+- Reset `localStorage` + `location.hash` in `beforeEach`: jsdom persists them
+  across tests within a file.
+- Install notes: `vite` is a vitest peer and must be installed explicitly.
+  Pinned `esbuild@0.25` conflicts with vite's peer range, so `package.json`
+  carries `"overrides": { "esbuild": "$esbuild" }` to unify on the root
+  version (verified benign by green runs — do NOT "fix" this by upgrading
+  the build chain's esbuild). Plain `npm install` / `npm ci` then work with
+  no flags; the committed lockfile keeps CI deterministic. (Lesson learned:
+  `--legacy-peer-deps` installs silently pruned transitive deps like
+  `unplugin`, breaking both `npm ci` and the production build — overrides
+  are the correct mechanism.)
+
+### Phase 2: SQLite proof-of-concept (when Disk Scanner starts)
+
+- Candidates verified 0.16-compatible: `karlseguin/zqlite.zig` (targets
+  0.16.0) or `nDimensional/zig-sqlite` (tested on 0.16.0). Avoid
+  `vrischmann/zig-sqlite` (stalled pre-0.16; community fork exists — this is
+  the ecosystem tax in action).
+- Zero-churn alternative: `@cImport` system `sqlite3` directly behind a thin
+  envelope-error wrapper, mirroring how `time.h` is already consumed.
+- Uses, in order: Disk Scanner result cache (already planned) → FTS5
+  full-text search over chain notes (real upgrade over title matching) →
+  durable quiz progress. Keep the v1 JSON store until the cache need is real.
+
+### Phase 3: audio stack (per existing audio plan)
+
+- `miniaudio` (single-header C, public domain/CC0) for device discovery and
+  app-local playback; `KissFFT` for the visualizer FFT. Both via `@cImport`,
+  no Zig-version risk. Unchanged from `Recommended New Libraries` above.
+
+### Phase 4: on demand only
+
+- `@preact/signals` (first-party, tiny): adopt when lifted `useState`
+  (papers editing, todo focus date, quiz-known) starts prop-drilling — not
+  before. Current lifting works.
+- `uPlot` (framework-agnostic, tiny): EQ spectrum / scanner treemap visuals.
+  Hand-rolled SVG stays acceptable for bars and treemaps.
+- `date-fns`: only if recurring todos/reminders arrive; hand-rolled ISO utils
+  suffice today.
+- `marked`: only if papers need full GFM (tables). The tested markdown subset
+  is a deliberate CSP-safe asset — do not replace it lightly.
+- `lucide` icons: only if the glyph system outgrows itself.
+- TypeScript `tsc --noEmit` (devDep, zero runtime cost): complements
+  `bindings.d.ts`; see the existing Frontend TODO.
+- Playwright: e2e against `npm run dev`; the native shell stays manual.
+
+### Explicitly rejected
+
+- React-only libs needing `preact/compat`; `zod` (bridge validation is
+  tighter and smaller); `idb-keyval` (the Zig store owns durability);
+  anything CDN-loaded (offline + CSP); `resvg` for SVG-in-PDF (heavy native
+  dep for a nice-to-have — placeholder-box semantics are the right 80/20);
+  HTTP server libs (no server surface); CLI-arg parsers (no CLI surface);
+  UUID libs (time+counter ids are fine); pure-Zig utility grab-bags (churn
+  risk exceeds value at this scale).
 
 ## Audio Product Scope
 
