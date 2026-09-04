@@ -18,7 +18,7 @@ the three items here are the integration milestones for that work.
 
 - [ ] Finish Disk Scanner backend (volume discovery, scan lifecycle, worker threads) and replace the mock Disk Scanner data with backend RPC calls.
 - [ ] Finish Audio Equalizer backend (device discovery, playback, DSP) and replace the mock Audio Equalizer controls with backend RPC calls.
-- [ ] Add Chain Notes persistence (create, rename, delete, reorder), note search/filtering, Markdown/plain-text import, and PDF styling options for chained-note export (cf. webview-app-with-vlang Chain Notes todos).
+- [ ] Extend Chain Notes persistence with reorder, Markdown/plain-text import, and PDF styling options. Create, update/rename, delete, search/filtering, and PDF export now use the backend note store.
 - [x] Move `Context` state and backend operations out of `src/main.zig` into a separate module.
 - [ ] Define a clear RPC API for frontend/backend communication. Evaluate a namespace (e.g. `window.backend.*`) instead of loose `window.*` functions, as suggested by webview-app-with-vlang Phase 2.
 - [x] Add a health/status bridge method for frontend startup checks (cf. webview-app-with-vlang `get_time` / health-check idea). Implemented as `getStatus` (`backend.healthStatus()` + `statusPayload()`), bound in `core_plugin`, exposed via `frontend-preact/src/backend.js` + `bindings.d.ts`.
@@ -36,7 +36,9 @@ the three items here are the integration milestones for that work.
 - [x] Add a backend configuration layer for window title, size, and debug/release mode (cf. webview-app-with-vlang `config.v`: `default_app_config()`, `is_debug_build()`). Implemented in `src/config.zig`; `src/main.zig` no longer hardcodes title/size/devtools.
 - [x] Add backend logging with levels and different behavior for debug and release builds. Implemented in `src/backend/log.zig` (`Level`, `log()`, `shouldLog()`; debug gated on config).
 - [x] Add graceful shutdown handling for the WebView event loop and worker threads (cf. webview-app-with-vlang graceful-shutdown todo). Implemented: `src/main.zig` runs `registry.deinitAll()` after `easy.run()` with warning on failure, then logs shutdown; plugin `onDeinit` hooks fire (no worker threads yet).
-- [ ] Decide whether application state should persist between launches; if so, add OS-specific data-directory handling, persistence/migrations, and import/export or backup support.
+- [x] Decide on persistent storage: versioned JSON state file as v1 (see `Persistence Implementation Plan`). `localStorage` is rejected for anything durable because it throws under the native shell's opaque origin (cf. the Todos crash fixed via `todo-storage.js`); SQLite is deferred until Disk Scanner needs a real cache.
+- [ ] Complete the v1 store: schema migrations, full `getState` / `saveState` bridge methods, and backup recovery. Implemented so far: OS data-directory resolution, atomic `state.json` read/write, note CRUD bindings, validation, structured storage errors, and reload tests.
+- [ ] Add import/export or backup support (copy/restore the state file; JSON download/upload from the frontend).
 - [ ] Add packaging for Linux, macOS, and Windows.
 
 ## Frontend
@@ -47,23 +49,30 @@ the three items here are the integration milestones for that work.
 - [x] Prevent duplicate or conflicting counter requests while an operation is pending.
 - [ ] Add TypeScript checking (`tsc --noEmit`) or migrate frontend files to TypeScript. The active frontend is Preact, so `svelte-check` does not apply.
 - [ ] Organize the UI into reusable components as the application grows.
+- [x] Migrate the active frontend styling from Tailwind and global component CSS to StyleX with esbuild extraction.
 - [x] Move toolkit views and metadata behind a frontend plugin registry.
 - [x] Add a replaceable frontend entrypoint registry without swapping the active frontend.
 - [x] Improve responsive behavior for small windows.
 - [x] Add keyboard navigation, visible focus states, labels, and accessible status messages.
-- [x] Keep launcher and workspace sidebars fixed by default.
+- [x] Keep the launcher and compact workspace rail fixed by default; group Disk Scanner and Audio Equalizer under the expandable Tools submenu.
+- [x] Add a Quiz workspace with bundled Blender 3D Editor and Audio Programming collections, answer reveal, explanations, progress, search, known-answer tracking, and reset controls. Implemented in `frontend-preact/src/plugins/quiz.jsx` and `quiz-data.js`.
+- [x] Add an expandable Quiz sidebar with separate `Quiz Session` and `Quiz Editor` destinations; keep it mutually exclusive with the Tools submenu.
+- [ ] Connect `Quiz Editor` to the versioned backend state store for custom decks and question CRUD; keep bundled example collections read-only.
+- [ ] Expand Quiz collections and add a content authoring/schema workflow so new decks do not require editing the component.
+- [ ] Persist Quiz progress and custom collections through the versioned backend state store; keep bundled decks read-only and safely migrate deck/question ids.
+- [ ] Add spaced repetition, shuffled sessions, answer confidence levels, and session history to Quiz.
 - [x] Add a frontend mock bridge so the UI can run independently under Vite. Implemented: `frontend-preact/src/backend.js` falls back to mocks when `window.*` bindings are absent (`__PREACT_MOCK_BRIDGE__` opts out); `npm run dev` / `npm run serve` serve the UI in the browser.
 - [x] Add a typed bridge client for all Zig calls with backend-unavailable, timeout, and validation states (cf. webview-app-with-vlang `ui/src/lib/backend.ts` + `backend.test.ts`). Implemented: `frontend-preact/src/backend.js` normalizes every failure to `{code, message}` (`errorDetails()` handles envelopes, bare error names, timeouts, unavailable bindings, client-side validation), enforces a configurable timeout (default 5s), validates `increment` deltas locally, and `BackendStatus` probes `getStatus` on mount. Covered by `frontend-preact/check-backend-errors.mjs` (`npm test`, wired into `zig build test`).
-- [ ] Add frontend component tests for counter interactions and backend error states. Bridge-level behavior is covered by `check-backend-errors.mjs`; Preact component rendering is still untested.
+- [ ] Add frontend component tests for counter and Notes interactions. Bridge-level CRUD and backend error behavior is covered by `check-backend-errors.mjs`; Preact component rendering is still untested.
 - [ ] Add a proper application-level design system and theme configuration.
 - [x] Add a production error boundary or fallback screen. Implemented: `frontend-preact/src/error-boundary.jsx` (`ErrorBoundary` with reload recovery) wrapping `<App />` in `src/main.jsx`.
 - [ ] Verify `ErrorBoundary` against the pinned Preact version (`getDerivedStateFromError` support) with a render test; give the Notes and Todos tabs distinct tones (both are `gold` today).
-- [ ] Wire the `getStatus` health probe into `BackendStatus` (startup/mount check, not just Refresh) and make `backend.isNative()` cover the full core binding set instead of 3 names.
-- [ ] Single-source the binding list: derive `frontend-preact/check-bindings.cjs` expectations from `src/backend/core_plugin.zig:bound_names` instead of maintaining the same 9 names by hand.
+- [x] Wire the `getStatus` health probe into `BackendStatus` and make `backend.isNative()` cover the full core binding set.
+- [ ] Single-source the binding list: derive `frontend-preact/check-bindings.cjs` expectations from `src/backend/core_plugin.zig:bound_names` instead of maintaining the same 13 names by hand.
 
 ## Integration
 
-- [x] Keep `bindings.d.ts` synchronized with Zig bindings, ideally through generated types or a shared API schema. Implemented: `src/backend/core_plugin.zig:bound_names` (9 names + uniqueness test) + `frontend-preact/check-bindings.cjs` (`npm run check:bindings`, wired into `npm run build`, `zig build test`, and CI).
+- [x] Keep `bindings.d.ts` synchronized with Zig bindings, ideally through generated types or a shared API schema. Implemented: `src/backend/core_plugin.zig:bound_names` (13 names + uniqueness test) + `frontend-preact/check-bindings.cjs` (`npm run check:bindings`, wired into `npm run build`, `zig build test`, and CI).
 - [x] Define a development mode where Vite serves the UI while Zig provides the native shell. Implemented via `zig build run -Ddev`: dev build navigates to the Preact dev server (`http://localhost:3000`), release build uses the embedded single-file HTML (`build_options.dev_mode` in `build.zig` + `src/main.zig`).
 - [x] Add a single `test-all` path (`zig build test` + `npm run check`, plus frontend build) mirroring `v run build.vsh test`, and keep an integration test for each JavaScript-to-Zig binding. `zig build test` now runs `backend/config/plugin/log/core_plugin` unit tests + `npm run check` + `npm run check:bindings`; binding-name sync is covered statically.
 - [x] Add a Content Security Policy and restrict unintended navigation/external content. Implemented: CSP `<meta>` in `frontend-preact/public/index.html` (carried into `dist/` + embedded HTML by `single-file-html` plugin); release shell serves only embedded HTML, dev shell navigates only to the local dev server.
@@ -91,7 +100,7 @@ the three items here are the integration milestones for that work.
 - GTK3 and WebKitGTK 4.1 on Linux.
 - WebView2 on Windows.
 - Native WebKit on macOS.
-- Preact 10, esbuild, and Tailwind CSS (active `frontend-preact/` shell).
+- Preact 10, esbuild, and StyleX (active `frontend-preact/` shell).
 - Previous Svelte frontend lives only in `archive/svelte-view/` and is not built.
 
 ### Recommended New Libraries
@@ -146,6 +155,7 @@ the three items here are the integration milestones for that work.
 
 ## Recommended Delivery Order
 
+- [x] Implement the v1 JSON state store and persist Chain Notes through it.
 - [ ] Finish Disk Scanner using Zig and OS filesystem APIs.
 - [ ] Add worker-thread progress and cancellation.
 - [ ] Replace Disk Scanner mock data with RPC results.
@@ -155,4 +165,49 @@ the three items here are the integration milestones for that work.
 - [ ] Connect frontend sliders to real filter coefficients.
 - [ ] Add FFT visualizer data through `KissFFT`.
 - [ ] Revisit system-wide audio routing as a separate advanced project.
-- [ ] Add SQLite persistence after the core features work.
+- [ ] Add SQLite scan-result caching only when Disk Scanner outgrows the JSON store.
+
+## Persistence Implementation Plan
+
+Context: the Todos workspace crash showed `localStorage` throws under the
+native shell's opaque origin, so anything durable must live behind the Zig
+backend. Options considered:
+
+### Option A (chosen for v1): single versioned JSON state file
+- Backend resolves the OS data dir (`XDG_DATA_HOME` on Linux,
+  `%APPDATA%` on Windows, `~/Library/Application Support` on macOS) and
+  manages `<app-dir>/state.json` with schema `{ "version": 1, "notes": [...],
+  "presets": {...}, "counter": n }`.
+- Reads at startup (missing file = fresh defaults); writes are debounced and
+  atomic (tmp file + rename). Migrations run on load via a version switch.
+- Bridge: `getState()` returns the document; `saveState(doc)` validates
+  (version, known top-level keys) and persists. Failures use the error
+  envelope: `StorageUnavailable`, `StorageCorrupt` (with backup of the bad
+  file + fresh defaults), `StorageWriteFailed`.
+- Pros: zero dependencies, human-readable, trivial backup (copy one file),
+  easy import/export. Cons: whole-file rewrites; fine at KB scale.
+- Tasks:
+  - [ ] Add data-dir resolution per OS with unit tests (env overrides for hermetic tests).
+  - [ ] Add versioned schema + migration switch with tests (v0/missing -> v1).
+  - [ ] Add atomic write (tmp + rename) with tests, including corrupt-file recovery.
+  - [ ] Add `getState` / `saveState` bindings with envelope errors and frontend
+    `backend.js` wiring (`getState`, `saveState` with validation states).
+  - [ ] Migrate Chain Notes (then counter, then EQ presets) onto the store.
+
+### Option B (deferred): file-per-note Markdown + index
+- Each note is a `.md` file with front-matter; `index.json` keeps ordering.
+- Revisit only if users need external editing, git history, or per-note sync;
+  overkill while notes are simple.
+
+### Option C (deferred): SQLite
+- Correct tool for Disk Scanner result caching (indexed queries over thousands
+  of rows) but a heavy dependency for notes/counters alone. Revisit when the
+  scanner needs it, per the delivery order above.
+
+### Option D (rejected): frontend-only `localStorage`
+- Rejected for anything durable: throws in the native shell. Keep it as a
+  browser-dev convenience behind the `todo-storage.js` memory fallback only.
+
+### Option E (rejected as steady state): in-memory + manual export only
+- Acceptable stopgap at most; users lose data silently. The JSON download /
+  upload path survives as the import/export mechanism for Option A.

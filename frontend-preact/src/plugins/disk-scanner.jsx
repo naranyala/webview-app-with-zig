@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { sx } from '../stylex-styles.js';
 
 const diskVolumes = [
   {
@@ -68,31 +69,32 @@ export function DiskScanner() {
   }
 
   return (
-    <section className="tool-page">
-      <div className="tool-heading">
+    <section className={sx('tool-page')}>
+      <div className={sx('tool-heading')}>
         <div>
-          <p className="eyebrow">Storage</p>
-          <h1>Disk Scanner</h1>
-          <p>Check usage, then scan a volume.</p>
+          <p className={sx('eyebrow')}>Storage</p>
+          <h1 className={sx('pageTitle')}>Disk Scanner</h1>
+          <p className={sx('lede')}>Check usage, then scan a volume.</p>
         </div>
-        <span className="mock-badge">Mock</span>
+        <span className={sx('mock-badge')}>Mock</span>
       </div>
 
-      <div className="disk-grid">
-        <div className="tool-panel scan-panel">
-          <div className="panel-heading">
+      <div className={sx('disk-grid')}>
+        <div className={sx('tool-panel')}>
+          <div className={sx('panel-heading')}>
             <div>
-              <span className="panel-label">Target</span>
-              <h2>Volume</h2>
+              <span className={sx('panel-label')}>Target</span>
+              <h2 className={sx('panel-title')}>Volume</h2>
             </div>
-            <span className="panel-status">
+            <span className={sx('panel-status')}>
               {diskScanState === 'complete' ? 'Done' : 'Ready'}
             </span>
           </div>
-          <label className="select-label" htmlFor="volume-select">
+          <label className={sx('select-label')} htmlFor="volume-select">
             Volume
           </label>
           <select
+            className={sx('select')}
             id="volume-select"
             value={selectedVolumeId}
             onChange={(event) => setSelectedVolumeId(event.currentTarget.value)}
@@ -104,19 +106,24 @@ export function DiskScanner() {
               </option>
             ))}
           </select>
-          <div className="volume-summary">
-            <div>
+          <div className={sx('summaryRow')}>
+            <div className={sx('summaryCopy')}>
               <strong>{selectedVolume.used}</strong>
-              <span>of {selectedVolume.total} used</span>
+              <span className={sx('muted')}>
+                of {selectedVolume.total} used
+              </span>
             </div>
             <strong>{selectedVolume.percent}%</strong>
           </div>
-          <div className="progress-track" role="img" aria-label="Used storage">
-            <span style={`width: ${selectedVolume.percent}%`} />
+          <div className={sx('bar')} role="img" aria-label="Used storage">
+            <span
+              className={sx('barFill')}
+              style={`width: ${selectedVolume.percent}%`}
+            />
           </div>
           <button
             type="button"
-            className="primary-button"
+            className={sx('primary')}
             onClick={startDiskScan}
             disabled={diskScanState === 'scanning'}
           >
@@ -126,33 +133,36 @@ export function DiskScanner() {
                 ? 'Scan again'
                 : 'Start mock scan'}
           </button>
-          <p className="panel-note">Mock data only. No files are read.</p>
+          <p className={sx('note')}>Mock data only. No files are read.</p>
         </div>
 
-        <div className="tool-panel storage-panel">
-          <div className="panel-heading">
+        <div className={sx('tool-panel')}>
+          <div className={sx('panel-heading')}>
             <div>
-              <span className="panel-label">Largest</span>
-              <h2>Folders</h2>
+              <span className={sx('panel-label')}>Largest</span>
+              <h2 className={sx('panel-title')}>Folders</h2>
             </div>
-            <span className="scan-time">never</span>
+            <span className={sx('muted')}>never</span>
           </div>
-          <div className="folder-list">
+          <div className={sx('folder-list')}>
             {diskFolders.map((folder) => (
-              <div className="folder-row" key={folder.name}>
-                <div className="folder-copy">
+              <div key={folder.name}>
+                <div className={sx('folder-copy')}>
                   <span>{folder.name}</span>
-                  <strong>{folder.size}</strong>
+                  <strong className={sx('folderStrong')}>{folder.size}</strong>
                 </div>
-                <div className="folder-track">
-                  <span style={`width: ${folder.percent}%`} />
+                <div className={sx('barNoMargin')}>
+                  <span
+                    className={sx('barFill')}
+                    style={`width: ${folder.percent}%`}
+                  />
                 </div>
               </div>
             ))}
           </div>
-          <div className="storage-footer">
+          <div className={sx('footerRow')}>
             <span>Free space</span>
-            <strong>286 GB</strong>
+            <strong className={sx('strongGreen')}>286 GB</strong>
           </div>
         </div>
       </div>

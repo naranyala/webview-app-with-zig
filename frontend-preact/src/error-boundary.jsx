@@ -1,4 +1,5 @@
 import { Component } from 'preact';
+import { sx } from './stylex-styles.js';
 
 /**
  * Production error boundary / fallback screen.
@@ -35,15 +36,19 @@ export class ErrorBoundary extends Component {
           ? state.error.message
           : String(state.error ?? 'Unknown error');
       return (
-        <div className="shell">
-          <main className="launcher-main" role="alert">
-            <p className="eyebrow">Toolkit</p>
-            <h1>Something went wrong</h1>
-            <p className="lede">
+        <div className={sx('shell')}>
+          <main className={sx('launcher-main')} role="alert">
+            <p className={sx('eyebrow')}>Toolkit</p>
+            <h1 className={sx('error-title')}>Something went wrong</h1>
+            <p className={sx('lede')}>
               The workspace hit an unexpected error and stopped rendering.
             </p>
-            <p className="error">{message}</p>
-            <button type="button" onClick={this.handleReset}>
+            <p className={sx('error')}>{message}</p>
+            <button
+              className={sx('primary')}
+              type="button"
+              onClick={this.handleReset}
+            >
               Reload workspace
             </button>
           </main>

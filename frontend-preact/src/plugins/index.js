@@ -1,7 +1,9 @@
+import { AcademicPaper } from './academic-paper.jsx';
 import { AudioEqualizer } from './audio-equalizer.jsx';
 import { ChainNotes } from './chain-notes.jsx';
 import { defineFrontendPlugin } from './contract.js';
 import { DiskScanner } from './disk-scanner.jsx';
+import { Quiz } from './quiz.jsx';
 import { TodoApp } from './todo.jsx';
 
 export const diskScannerPlugin = defineFrontendPlugin({
@@ -44,11 +46,34 @@ export const todoPlugin = defineFrontendPlugin({
   component: TodoApp
 });
 
+export const quizPlugin = defineFrontendPlugin({
+  id: 'quiz',
+  index: '05',
+  title: 'Quiz',
+  description:
+    'Practice Blender 3D and audio programming with focused prompts.',
+  tone: 'violet',
+  symbol: 'RECALL',
+  component: Quiz
+});
+
+export const academicPaperPlugin = defineFrontendPlugin({
+  id: 'paper',
+  index: '06',
+  title: 'Academic Paper',
+  description: 'Read two-column papers and export them to PDF.',
+  tone: 'green',
+  symbol: 'SCHOLAR',
+  component: AcademicPaper
+});
+
 const registeredPlugins = [
   diskScannerPlugin,
   audioEqualizerPlugin,
   chainNotesPlugin,
-  todoPlugin
+  todoPlugin,
+  quizPlugin,
+  academicPaperPlugin
 ];
 const pluginIds = new Set();
 

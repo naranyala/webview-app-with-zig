@@ -10,12 +10,34 @@ declare global {
     getSystemInfo(): Promise<string>;
     getTimestamp(): Promise<string>;
     getStatus(): Promise<string>;
+    getNotes(): Promise<Note[]>;
+    createNote(title: string, tag: string, body: string): Promise<Note>;
+    updateNote(
+      id: string,
+      title: string,
+      tag: string,
+      body: string
+    ): Promise<Note>;
+    deleteNote(id: string): Promise<void>;
+    savePdf(filename: string, dataBase64: string): Promise<SaveResult>;
     minimizeWindow(): Promise<void>;
     maximizeWindow(): Promise<void>;
     restoreWindow(): Promise<void>;
     closeWindow(): Promise<void>;
     __PREACT_MOCK_BRIDGE__?: boolean;
   }
+}
+
+interface Note {
+  id: string;
+  title: string;
+  tag: string;
+  updated: string;
+  body: string;
+}
+
+interface SaveResult {
+  path: string;
 }
 
 export {};

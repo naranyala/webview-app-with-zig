@@ -4,8 +4,14 @@ const c = @cImport({
     @cInclude("time.h");
 });
 
+const io = std.Options.debug_io;
+
 pub const PluginRegistry = @import("backend/plugin.zig").PluginRegistry;
 pub const Log = @import("backend/log.zig");
+pub const Storage = @import("backend/storage.zig").Storage;
+pub const Note = @import("backend/storage.zig").Note;
+pub const NoteInput = @import("backend/storage.zig").NoteInput;
+pub const UpdateNoteInput = @import("backend/storage.zig").UpdateNoteInput;
 
 pub const State = struct {
     count: i64 = 0,
@@ -75,6 +81,208 @@ pub fn rejectWithCode(req: anytype, code: []const u8, message: []const u8) void 
         return;
     };
     req.reject(payload);
+}
+
+pub const RpcArgsError = error{
+    MalformedJson,
+    NotArgumentArray,
+    WrongArgumentCount,
+    NonStringArgument,
+};
+
+pub fn parseRpcArgs(
+    args: []const u8,
+    allocator: std.mem.Allocator,
+) RpcArgsError!std.json.Parsed(std.json.Value) {
+    return std.json.parseFromSlice(std.json.Value, allocator, args, .{}) catch {
+        return error.MalformedJson;
+    };
+}
+
+fn argumentStrings(value: std.json.Value, comptime count: usize) RpcArgsError![count][]const u8 {
+    const values = switch (value) {
+        .array => |array| array.items,
+        else => return error.NotArgumentArray,
+    };
+    if (values.len != count) return error.WrongArgumentCount;
+
+    var result: [count][]const u8 = undefined;
+    for (values, 0..) |item, index| {
+        result[index] = switch (item) {
+            .string => |string| string,
+            else => return error.NonStringArgument,
+        };
+    }
+    return result;
+}
+
+pub fn parseCreateNoteArgs(value: std.json.Value) RpcArgsError!NoteInput {
+    const values = try argumentStrings(value, 3);
+    return .{ .title = values[0], .tag = values[1], .body = values[2] };
+}
+
+pub fn parseUpdateNoteArgs(value: std.json.Value) RpcArgsError!UpdateNoteInput {
+    const values = try argumentStrings(value, 4);
+    return .{ .id = values[0], .title = values[1], .tag = values[2], .body = values[3] };
+}
+
+pub fn parseDeleteNoteArgs(value: std.json.Value) RpcArgsError![]const u8 {
+    return (try argumentStrings(value, 1))[0];
+}
+
+pub fn rpcErrorCode(err: anyerror) []const u8 {
+    return switch (err) {
+        error.MalformedJson => "MalformedJson",
+        error.NotArgumentArray => "NotArgumentArray",
+        error.WrongArgumentCount => "WrongArgumentCount",
+        error.NonStringArgument => "NonStringArgument",
+        error.InvalidPdfName => "InvalidPdfName",
+        error.PdfTooLarge => "PdfTooLarge",
+        error.PdfDecodeFailed => "PdfDecodeFailed",
+        error.DocumentsUnavailable => "DocumentsUnavailable",
+        error.PdfWriteFailed => "PdfWriteFailed",
+        else => @import("backend/storage.zig").errorCode(err),
+    };
+}
+
+pub fn rpcErrorMessage(err: anyerror) []const u8 {
+    return switch (err) {
+        error.MalformedJson => "arguments must be valid JSON",
+        error.NotArgumentArray => "arguments must be a JSON array",
+        error.WrongArgumentCount => "the wrong number of arguments was provided",
+        error.NonStringArgument => "note arguments must be strings",
+        error.InvalidPdfName => "pdf filename is invalid",
+        error.PdfTooLarge => "pdf is too large",
+        error.PdfDecodeFailed => "pdf data could not be decoded",
+        error.DocumentsUnavailable => "documents folder is unavailable",
+        error.PdfWriteFailed => "pdf could not be written",
+        else => @import("backend/storage.zig").errorMessage(err),
+    };
+}
+
+/// Maximum PDF filename length, including the `.pdf` suffix.
+pub const max_pdf_filename_bytes: usize = 100;
+/// Maximum accepted PDF payload after base64 decoding (16 MiB).
+pub const max_pdf_bytes: usize = 16 * 1024 * 1024;
+/// Maximum accepted base64 payload length before decoding.
+pub const max_pdf_b64_bytes: usize = 22_400_000;
+
+pub const SavePdfInput = struct {
+    filename: []const u8,
+    content_b64: []const u8,
+};
+
+pub fn parseSavePdfArgs(value: std.json.Value) RpcArgsError!SavePdfInput {
+    const values = try argumentStrings(value, 2);
+    return .{ .filename = values[0], .content_b64 = values[1] };
+}
+
+fn pdfEnvironment(comptime name: [:0]const u8) ?[]const u8 {
+    const value = std.c.getenv(name.ptr) orelse return null;
+    const slice = std.mem.span(value);
+    return if (slice.len == 0) null else slice;
+}
+
+/// Resolves the per-user Documents folder used for PDF exports.
+pub fn resolveDocumentsDir(allocator: std.mem.Allocator) ![]u8 {
+    switch (builtin.os.tag) {
+        .linux, .macos => {
+            const home = pdfEnvironment("HOME") orelse return error.DocumentsUnavailable;
+            return std.fs.path.join(allocator, &.{ home, "Documents" });
+        },
+        .windows => {
+            const profile = pdfEnvironment("USERPROFILE") orelse return error.DocumentsUnavailable;
+            return std.fs.path.join(allocator, &.{ profile, "Documents" });
+        },
+        else => return error.UnsupportedPlatform,
+    }
+}
+
+fn validatePdfFilename(name: []const u8) !void {
+    if (name.len < 5 or name.len > max_pdf_filename_bytes) return error.InvalidPdfName;
+    if (!std.mem.endsWith(u8, name, ".pdf")) return error.InvalidPdfName;
+    if (!std.ascii.isAlphanumeric(name[0])) return error.InvalidPdfName;
+    for (name[1 .. name.len - 4]) |ch| {
+        if (!std.ascii.isAlphanumeric(ch) and ch != '.' and ch != '_' and ch != '-') {
+            return error.InvalidPdfName;
+        }
+    }
+}
+
+fn decodePdfContent(allocator: std.mem.Allocator, content_b64: []const u8) ![]u8 {
+    if (content_b64.len == 0 or content_b64.len > max_pdf_b64_bytes) return error.PdfTooLarge;
+    const Decoder = std.base64.standard.Decoder;
+    const decoded_len = Decoder.calcSizeForSlice(content_b64) catch return error.PdfDecodeFailed;
+    if (decoded_len == 0 or decoded_len > max_pdf_bytes) return error.PdfTooLarge;
+    const decoded = try allocator.alloc(u8, decoded_len);
+    errdefer allocator.free(decoded);
+    Decoder.decode(decoded, content_b64) catch return error.PdfDecodeFailed;
+    return decoded;
+}
+
+/// Writes a PDF payload into `dir_path` (creating it when needed), picking a
+/// unique filename when `input.filename` is taken. Returns `{"path": ...}`.
+/// `dir_path` is injectable so tests avoid touching the real Documents folder.
+pub fn savePdfToDir(
+    allocator: std.mem.Allocator,
+    dir_path: []const u8,
+    input: SavePdfInput,
+) ![:0]u8 {
+    try validatePdfFilename(input.filename);
+    const decoded = try decodePdfContent(allocator, input.content_b64);
+    defer allocator.free(decoded);
+
+    std.Io.Dir.cwd().createDirPath(io, dir_path) catch return error.DocumentsUnavailable;
+    var dir = std.Io.Dir.openDirAbsolute(io, dir_path, .{}) catch return error.DocumentsUnavailable;
+    defer dir.close(io);
+
+    const stem = input.filename[0 .. input.filename.len - 4];
+    var attempt: u32 = 0;
+    while (attempt < 1000) : (attempt += 1) {
+        var name_buf: [max_pdf_filename_bytes + 16]u8 = undefined;
+        const candidate = if (attempt == 0)
+            input.filename
+        else
+            std.fmt.bufPrint(&name_buf, "{s}-{d}.pdf", .{ stem, attempt + 1 }) catch return error.PdfWriteFailed;
+
+        const occupied = blk: {
+            var existing = dir.openFile(io, candidate, .{}) catch |err| switch (err) {
+                error.FileNotFound => break :blk false,
+                else => return error.PdfWriteFailed,
+            };
+            existing.close(io);
+            break :blk true;
+        };
+        if (occupied) continue;
+
+        var atomic = dir.createFileAtomic(io, candidate, .{ .replace = false }) catch return error.PdfWriteFailed;
+        defer atomic.deinit(io);
+        var write_buf: [8192]u8 = undefined;
+        var writer = atomic.file.writer(io, &write_buf);
+        writer.interface.writeAll(decoded) catch return error.PdfWriteFailed;
+        writer.flush() catch return error.PdfWriteFailed;
+        atomic.replace(io) catch return error.PdfWriteFailed;
+
+        const full_path = try std.fs.path.join(allocator, &.{ dir_path, candidate });
+        defer allocator.free(full_path);
+        var output: std.Io.Writer.Allocating = .init(allocator);
+        defer output.deinit();
+        var stringify: std.json.Stringify = .{ .writer = &output.writer };
+        try stringify.write(.{ .path = full_path });
+        return allocator.dupeZ(u8, output.written());
+    }
+    return error.PdfWriteFailed;
+}
+
+/// Saves a PDF payload into the user's Documents folder. Returns `{"path": ...}`.
+pub fn savePdfToDocuments(allocator: std.mem.Allocator, input: SavePdfInput) ![:0]u8 {
+    const dir_path = try resolveDocumentsDir(allocator);
+    defer allocator.free(dir_path);
+    return savePdfToDir(allocator, dir_path, input);
+}
+
+pub fn rejectRpcError(req: anytype, err: anyerror) void {
+    rejectWithCode(req, rpcErrorCode(err), rpcErrorMessage(err));
 }
 
 pub fn systemInfo() [:0]const u8 {
@@ -227,4 +435,60 @@ test "platform and timestamp are available" {
 test "health status reports ok" {
     try std.testing.expectEqualStrings("ok", healthStatus());
     try std.testing.expectEqualStrings("{\"status\":\"ok\",\"backend\":\"zig\"}", statusPayload());
+}
+
+test "pdf filenames are validated" {
+    try validatePdfFilename("chain-notes.pdf");
+    try validatePdfFilename("a.pdf");
+    try validatePdfFilename("Chain_Notes-2026.09.04.pdf");
+    try std.testing.expectError(error.InvalidPdfName, validatePdfFilename(""));
+    try std.testing.expectError(error.InvalidPdfName, validatePdfFilename(".pdf"));
+    try std.testing.expectError(error.InvalidPdfName, validatePdfFilename("notes.txt"));
+    try std.testing.expectError(error.InvalidPdfName, validatePdfFilename("../evil.pdf"));
+    try std.testing.expectError(error.InvalidPdfName, validatePdfFilename("has space.pdf"));
+    try std.testing.expectError(error.InvalidPdfName, validatePdfFilename("-leading.pdf"));
+    try std.testing.expectEqualStrings("InvalidPdfName", rpcErrorCode(error.InvalidPdfName));
+    try std.testing.expectEqualStrings("pdf filename is invalid", rpcErrorMessage(error.InvalidPdfName));
+}
+
+test "pdf payloads decode within limits" {
+    const allocator = std.testing.allocator;
+
+    const decoded = try decodePdfContent(allocator, "aGVsbG8=");
+    defer allocator.free(decoded);
+    try std.testing.expectEqualStrings("hello", decoded);
+
+    try std.testing.expectError(error.PdfDecodeFailed, decodePdfContent(allocator, "!!!"));
+    try std.testing.expectError(error.PdfTooLarge, decodePdfContent(allocator, ""));
+    try std.testing.expectEqualStrings("PdfTooLarge", rpcErrorCode(error.PdfTooLarge));
+    try std.testing.expectEqualStrings("pdf could not be written", rpcErrorMessage(error.PdfWriteFailed));
+}
+
+test "pdf saves land on disk with unique names" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, allocator);
+    defer allocator.free(cwd);
+    const data_dir = try std.fs.path.join(allocator, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path });
+    defer allocator.free(data_dir);
+
+    const input: SavePdfInput = .{ .filename = "chain.pdf", .content_b64 = "aGVsbG8=" };
+    const first = try savePdfToDir(allocator, data_dir, input);
+    defer allocator.free(first);
+    try std.testing.expect(std.mem.indexOf(u8, first, "chain.pdf") != null);
+
+    const second = try savePdfToDir(allocator, data_dir, input);
+    defer allocator.free(second);
+    try std.testing.expect(std.mem.indexOf(u8, second, "chain-2.pdf") != null);
+
+    try std.testing.expectError(
+        error.InvalidPdfName,
+        savePdfToDir(allocator, data_dir, .{ .filename = "evil/../x.pdf", .content_b64 = "aGVsbG8=" }),
+    );
+    try std.testing.expectError(
+        error.PdfDecodeFailed,
+        savePdfToDir(allocator, data_dir, .{ .filename = "chain.pdf", .content_b64 = "!!!" }),
+    );
 }

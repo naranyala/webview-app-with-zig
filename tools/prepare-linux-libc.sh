@@ -36,7 +36,14 @@ for library in libc libm libpthread libdl librt libutil; do
     done
   fi
   if [[ -e "$source_file" ]]; then
-    ln -sfn -- "$source_file" "$output_dir/$library.so"
+    # The Zig cache may live on a filesystem that cannot preserve Linux
+    # symlinks. Copy the resolved file so the libc config remains usable.
+    cp -L -- "$source_file" "$output_dir/$library.so"
+  fi
+
+  source_file="$system_crt_dir/$library.a"
+  if [[ -e "$source_file" ]]; then
+    cp -L -- "$source_file" "$output_dir/$library.a"
   fi
 done
 

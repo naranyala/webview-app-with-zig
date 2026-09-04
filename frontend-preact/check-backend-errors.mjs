@@ -35,6 +35,13 @@ function withWindow(stub, fn) {
 await withWindow({}, async () => {
   check('mock increment resolves 0', (await backend.increment(1)) === 0);
   check('mock getStatus resolves ok', (await backend.getStatus()) === 'ok');
+  const note = await backend.createNote('Mock note', 'Test', 'Body');
+  check('mock create note returns an id', note.id.startsWith('note-mock-'));
+  check('mock list returns created note', (await backend.getNotes()).length === 1);
+  const updated = await backend.updateNote(note.id, 'Updated mock note', 'Saved', 'Changed');
+  check('mock update note changes title', updated.title === 'Updated mock note');
+  await backend.deleteNote(note.id);
+  check('mock delete note removes note', (await backend.getNotes()).length === 0);
 });
 
 // 2. Native values pass through with args forwarded.
@@ -143,6 +150,34 @@ check(
 check(
   'backendError formats unknown input',
   typeof backendError(null) === 'string' && backendError(null).length > 0
+);
+check(
+  'storage errors have friendly messages',
+  errorDetails(new Error('{"code":"StorageWriteFailed"}')).message ===
+    'The note could not be saved.'
+);
+
+// 9. savePdf validates locally and resolves a path through the mock.
+await withWindow({}, async () => {
+  const saved = await backend.savePdf('chain-notes.pdf', 'aGVsbG8=');
+  check('mock savePdf returns a path', saved.path === 'Documents/chain-notes.pdf');
+  try {
+    await backend.savePdf('../evil.pdf', 'aGVsbG8=');
+    check('invalid pdf name rejected', false);
+  } catch (error) {
+    check('invalid pdf name code is InvalidArgument', errorDetails(error).code === 'InvalidArgument');
+  }
+  try {
+    await backend.savePdf('chain-notes.pdf', '');
+    check('empty pdf data rejected', false);
+  } catch (error) {
+    check('empty pdf data code is InvalidArgument', errorDetails(error).code === 'InvalidArgument');
+  }
+});
+check(
+  'pdf errors have friendly messages',
+  errorDetails(new Error('{"code":"PdfWriteFailed"}')).message ===
+    'The PDF could not be saved.'
 );
 
 if (failures > 0) {

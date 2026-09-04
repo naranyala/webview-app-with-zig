@@ -1,6 +1,5 @@
 import { render } from 'preact';
-import './styles.css';
-import './toolkit.css';
+import './stylex.css';
 import { App } from './App.jsx';
 import { ErrorBoundary } from './error-boundary.jsx';
 

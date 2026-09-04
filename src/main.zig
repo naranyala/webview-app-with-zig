@@ -22,6 +22,7 @@ const Easy = Webview.Easy(Context);
 
 const Context = struct {
     state: backend.State,
+    storage: *backend.Storage,
 
     pub fn increment(self: *Context, req: Easy.Request) !void {
         const delta = backend.parseIncrementArgs(
@@ -56,6 +57,86 @@ const Context = struct {
 
     pub fn getStatus(_: *Context, req: Easy.Request) !void {
         req.resolveWith(backend.healthStatus());
+    }
+
+    pub fn getNotes(self: *Context, req: Easy.Request) !void {
+        const payload = self.storage.listNotes(std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer std.heap.page_allocator.free(payload);
+        req.resolveWith(payload);
+    }
+
+    pub fn createNote(self: *Context, req: Easy.Request) !void {
+        const parsed = backend.parseRpcArgs(req.args, std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer parsed.deinit();
+        const input = backend.parseCreateNoteArgs(parsed.value) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        const payload = self.storage.createNote(input, std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer std.heap.page_allocator.free(payload);
+        req.resolveWith(payload);
+    }
+
+    pub fn updateNote(self: *Context, req: Easy.Request) !void {
+        const parsed = backend.parseRpcArgs(req.args, std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer parsed.deinit();
+        const input = backend.parseUpdateNoteArgs(parsed.value) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        const payload = self.storage.updateNote(input, std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer std.heap.page_allocator.free(payload);
+        req.resolveWith(payload);
+    }
+
+    pub fn deleteNote(self: *Context, req: Easy.Request) !void {
+        const parsed = backend.parseRpcArgs(req.args, std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer parsed.deinit();
+        const id = backend.parseDeleteNoteArgs(parsed.value) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        self.storage.deleteNote(id) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        req.resolve();
+    }
+
+    pub fn savePdf(_: *Context, req: Easy.Request) !void {
+        const parsed = backend.parseRpcArgs(req.args, std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer parsed.deinit();
+        const input = backend.parseSavePdfArgs(parsed.value) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        const payload = backend.savePdfToDocuments(std.heap.page_allocator, input) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer std.heap.page_allocator.free(payload);
+        req.resolveWith(payload);
     }
 
     pub fn minimizeWindow(_: *Context, req: Easy.Request) !void {
@@ -158,7 +239,13 @@ pub fn main() !void {
         build_options.dev_mode,
     });
 
-    var ctx: Context = .{ .state = .{} };
+    var storage = backend.Storage.init(std.heap.page_allocator) catch |err| {
+        backend.Log.log(.err, app_config.debug, "storage initialization failed: {s}", .{@errorName(err)});
+        return err;
+    };
+    defer storage.deinit();
+
+    var ctx: Context = .{ .state = .{}, .storage = &storage };
     var easy: Easy = try .init(&ctx, .{ .devtools = app_config.debug, .window = null });
     defer easy.deinit();
 

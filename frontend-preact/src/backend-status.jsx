@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { backend, backendError, errorDetails } from './backend.js';
+import { sx } from './stylex-styles.js';
 
 export function BackendStatus({ compact = false }) {
   const [count, setCount] = useState(null);
@@ -63,12 +64,12 @@ export function BackendStatus({ compact = false }) {
         : '';
 
   return (
-    <div className="backend-status" aria-live="polite">
-      <span className="backend-status-label">
+    <div className={sx('backend-status')} aria-live="polite">
+      <span className={sx('backend-status-label')}>
         Backend{backend.isNative() ? '' : ' (mock)'}
         {healthBadge}
       </span>
-      <span className="backend-status-value">
+      <span className={sx('backend-status-value')}>
         {[
           systemInfo && `${systemInfo}`,
           timestamp && `t:${timestamp}`,
@@ -78,8 +79,9 @@ export function BackendStatus({ compact = false }) {
           .join(' · ') ||
           (compact ? 'tap Refresh to connect' : 'not connected yet')}
       </span>
-      <span className="backend-status-actions">
+      <span className={sx('backend-status-actions')}>
         <button
+          className={sx('backendButton')}
           type="button"
           disabled={pending}
           onClick={() => run(async () => setCount(await backend.increment(1)))}
@@ -87,6 +89,7 @@ export function BackendStatus({ compact = false }) {
           +1
         </button>
         <button
+          className={sx('backendButton')}
           type="button"
           disabled={pending}
           onClick={() => run(async () => setCount(await backend.reset()))}
@@ -94,6 +97,7 @@ export function BackendStatus({ compact = false }) {
           Reset
         </button>
         <button
+          className={sx('backendButton')}
           type="button"
           disabled={pending}
           onClick={() =>
@@ -108,12 +112,12 @@ export function BackendStatus({ compact = false }) {
         </button>
       </span>
       {health === 'unavailable' && healthDetail && (
-        <span className="backend-status-error" role="alert">
+        <span className={sx('backend-status-error')} role="alert">
           Backend unavailable: {healthDetail}
         </span>
       )}
       {error && (
-        <span className="backend-status-error" role="alert">
+        <span className={sx('backend-status-error')} role="alert">
           {error}
         </span>
       )}
