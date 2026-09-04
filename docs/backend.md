@@ -1,7 +1,7 @@
 # Backend
 
-Zig backend: a `webview` host with RPCs grouped into plugins, a versioned
-JSON note store, validated PDF saving, and leveled logging.
+Zig backend: a `webview` host with RPCs grouped into plugins, versioned JSON
+note and quiz stores, validated PDF saving, and leveled logging.
 
 ## Modules
 
@@ -9,13 +9,14 @@ JSON note store, validated PDF saving, and leveled logging.
 | --- | --- |
 | `src/main.zig` | `Context` RPC handlers, window setup, plugin registration |
 | `src/backend.zig` | Argument parsing, error envelopes, `savePdf` file flow |
-| `src/backend/core_plugin.zig` | Binding registration + canonical `bound_names` (14) |
+| `src/backend/core_plugin.zig` | Binding registration + canonical `bound_names` (21) |
 | `src/backend/plugin.zig` | `PluginRegistry`: dedupe validation, ordered `registerAll`, `deinitAll`, enable/disable + lifecycle hooks |
 | `src/backend/storage.zig` | `Storage`: data-dir resolution, atomic `state.json`, note CRUD, validation, reload tests |
+| `src/backend/quiz_storage.zig` | `QuizStore`: atomic `quizzes.json`, collection/question CRUD, validation, reload tests |
 | `src/backend/log.zig` | `Level` logging; debug gated on build config |
 | `src/config.zig` | Window title/size, devtools flag, dev-server URL |
 
-## Bindings (14)
+## Bindings (21)
 
 `window.*` functions bound in `core_plugin.zig`, typed in
 `frontend-preact/src/bindings.d.ts`, wrapped in `frontend-preact/src/backend.js`
@@ -30,6 +31,13 @@ JSON note store, validated PDF saving, and leveled logging.
 | `createNote` / `updateNote` | title, tag, body (+ id) | `Note` |
 | `deleteNote` | id | void |
 | `savePdf` | filename, base64 data | `{ path }` |
+| `quizList` | — | `QuizCollection[]` |
+| `quizCreateCollection` | title, description, tone, level | `QuizCollection` |
+| `quizUpdateCollection` | id, title, description | `QuizCollection` |
+| `quizDeleteCollection` | id | void |
+| `quizCreateQuestion` | collection id, topic, question, answer | `QuizQuestion` |
+| `quizUpdateQuestion` | collection id, id, topic, question, answer, explanation, difficulty, tags CSV | `QuizQuestion` |
+| `quizDeleteQuestion` | collection id, id | void |
 | `minimizeWindow` / `maximizeWindow` / `restoreWindow` / `closeWindow` | — | void |
 
 Failures use stable `{code, message}` envelopes (`rejectWithCode`);
@@ -58,6 +66,14 @@ file, 200-char titles, 64-char tags, 512 KiB bodies. Corrupt files,
 unsupported versions, and read/write failures map to distinct error codes.
 `WEBVIEW_APP_DATA_DIR` overrides the data dir (used by tests and portable
 deployments).
+
+Quiz data is stored separately in `quizzes.json` in the same application data
+directory. Its schema is `{ "version": 1, "counter": n, "collections": [...] }`.
+Bundled quiz decks remain frontend assets and are read-only; user-created decks
+and questions use the native store. The store enforces limits of 1000
+collections, 500 questions per collection, 20,000-byte text fields, 16 tags per
+question, and 64-byte tags. Quiz failures use `Quiz*` error codes and the same
+`{code, message}` envelope as note and PDF operations.
 
 ## Adding a binding
 

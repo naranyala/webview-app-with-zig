@@ -14,6 +14,13 @@ pub fn register(comptime Easy: type) *const fn (*Easy) anyerror!void {
             try easy.bind(.updateNote);
             try easy.bind(.deleteNote);
             try easy.bind(.savePdf);
+            try easy.bind(.quizList);
+            try easy.bind(.quizCreateCollection);
+            try easy.bind(.quizUpdateCollection);
+            try easy.bind(.quizDeleteCollection);
+            try easy.bind(.quizCreateQuestion);
+            try easy.bind(.quizUpdateQuestion);
+            try easy.bind(.quizDeleteQuestion);
             try easy.bind(.minimizeWindow);
             try easy.bind(.maximizeWindow);
             try easy.bind(.restoreWindow);
@@ -30,7 +37,7 @@ pub const version: []const u8 = "0.1.0";
 pub const description: []const u8 = "Core bindings, notes storage, and window controls";
 
 /// Canonical JS binding names exposed by this plugin.
-/// `frontend-preact/check-bindings.mjs` asserts `bindings.d.ts` and
+/// `frontend-preact/check-bindings.cjs` asserts `bindings.d.ts` and
 /// `src/backend.js` stay in sync with this list.
 pub const bound_names: []const []const u8 = &.{
     "increment",
@@ -43,6 +50,13 @@ pub const bound_names: []const []const u8 = &.{
     "updateNote",
     "deleteNote",
     "savePdf",
+    "quizList",
+    "quizCreateCollection",
+    "quizUpdateCollection",
+    "quizDeleteCollection",
+    "quizCreateQuestion",
+    "quizUpdateQuestion",
+    "quizDeleteQuestion",
     "minimizeWindow",
     "maximizeWindow",
     "restoreWindow",
@@ -51,7 +65,7 @@ pub const bound_names: []const []const u8 = &.{
 
 test "core plugin exposes the documented binding set" {
     const std = @import("std");
-    try std.testing.expectEqual(@as(usize, 14), bound_names.len);
+    try std.testing.expectEqual(@as(usize, 21), bound_names.len);
     for (bound_names) |plugin_name| {
         try std.testing.expect(plugin_name.len > 0);
     }

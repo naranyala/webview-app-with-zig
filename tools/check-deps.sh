@@ -16,18 +16,22 @@ need() {
 need zig "Zig 0.16.0+ (https://ziglang.org/download)"
 need node "Node.js 18+ (https://nodejs.org)"
 need npm "npm (bundled with Node.js)"
-need pkg-config "pkg-config for GTK/WebKitGTK detection (Linux)"
 
-if command -v pkg-config >/dev/null 2>&1; then
-  for pc in gtk+-3.0 webkit2gtk-4.1; do
-    if pkg-config --exists "$pc"; then
-      printf 'found: %s\n' "$pc"
-    else
-      printf 'missing: %s (Linux: install libgtk-3-dev libwebkit2gtk-4.1-dev)\n' "$pc" >&2
-      missing=1
+case "$(uname -s 2>/dev/null || true)" in
+  Linux*)
+    need pkg-config "pkg-config for GTK/WebKitGTK detection (Linux)"
+    if command -v pkg-config >/dev/null 2>&1; then
+      for pc in gtk+-3.0 webkit2gtk-4.1; do
+        if pkg-config --exists "$pc"; then
+          printf 'found: %s\n' "$pc"
+        else
+          printf 'missing: %s (Linux: install libgtk-3-dev libwebkit2gtk-4.1-dev)\n' "$pc" >&2
+          missing=1
+        fi
+      done
     fi
-  done
-fi
+    ;;
+esac
 
 if [[ "$missing" -ne 0 ]]; then
   printf 'dependency check failed\n' >&2

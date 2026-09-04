@@ -116,6 +116,7 @@ pub fn build(b: *std.Build) void {
         "src/backend/log.zig",
         "src/backend/core_plugin.zig",
         "src/backend/storage.zig",
+        "src/backend/quiz_storage.zig",
     };
     for (backend_test_roots) |root| {
         const mod = b.createModule(.{

@@ -23,6 +23,7 @@ const Easy = Webview.Easy(Context);
 const Context = struct {
     state: backend.State,
     storage: *backend.Storage,
+    quiz: *backend.QuizStore,
 
     pub fn increment(self: *Context, req: Easy.Request) !void {
         const delta = backend.parseIncrementArgs(
@@ -139,6 +140,121 @@ const Context = struct {
         req.resolveWith(payload);
     }
 
+    pub fn quizList(self: *Context, req: Easy.Request) !void {
+        const payload = self.quiz.listCollections(std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer std.heap.page_allocator.free(payload);
+        req.resolveWith(payload);
+    }
+
+    pub fn quizCreateCollection(self: *Context, req: Easy.Request) !void {
+        const parsed = backend.parseRpcArgs(req.args, std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer parsed.deinit();
+        const input = backend.parseQuizCollectionInput(parsed.value) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        const payload = self.quiz.createCollection(input, std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer std.heap.page_allocator.free(payload);
+        req.resolveWith(payload);
+    }
+
+    pub fn quizUpdateCollection(self: *Context, req: Easy.Request) !void {
+        const parsed = backend.parseRpcArgs(req.args, std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer parsed.deinit();
+        const input = backend.parseQuizUpdateCollectionInput(parsed.value) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        const payload = self.quiz.updateCollection(input, std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer std.heap.page_allocator.free(payload);
+        req.resolveWith(payload);
+    }
+
+    pub fn quizDeleteCollection(self: *Context, req: Easy.Request) !void {
+        const parsed = backend.parseRpcArgs(req.args, std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer parsed.deinit();
+        const id = backend.parseQuizCollectionId(parsed.value) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        self.quiz.deleteCollection(id) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        req.resolve();
+    }
+
+    pub fn quizCreateQuestion(self: *Context, req: Easy.Request) !void {
+        const parsed = backend.parseRpcArgs(req.args, std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer parsed.deinit();
+        const input = backend.parseQuizQuestionInput(parsed.value) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        const payload = self.quiz.createQuestion(input, std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer std.heap.page_allocator.free(payload);
+        req.resolveWith(payload);
+    }
+
+    pub fn quizUpdateQuestion(self: *Context, req: Easy.Request) !void {
+        const parsed = backend.parseRpcArgs(req.args, std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer parsed.deinit();
+        const input = backend.parseQuizUpdateQuestionInput(parsed.value) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        const payload = self.quiz.updateQuestion(input, std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer std.heap.page_allocator.free(payload);
+        req.resolveWith(payload);
+    }
+
+    pub fn quizDeleteQuestion(self: *Context, req: Easy.Request) !void {
+        const parsed = backend.parseRpcArgs(req.args, std.heap.page_allocator) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        defer parsed.deinit();
+        const input = backend.parseQuizDeleteQuestionInput(parsed.value) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        self.quiz.deleteQuestion(input.collection_id, input.id) catch |err| {
+            backend.rejectRpcError(req, err);
+            return;
+        };
+        req.resolve();
+    }
+
     pub fn minimizeWindow(_: *Context, req: Easy.Request) !void {
         if (comptime builtin.os.tag == .linux) {
             const win = req.easy.getWindow() orelse {
@@ -245,7 +361,13 @@ pub fn main() !void {
     };
     defer storage.deinit();
 
-    var ctx: Context = .{ .state = .{}, .storage = &storage };
+    var quiz_store = backend.QuizStore.init(std.heap.page_allocator) catch |err| {
+        backend.Log.log(.err, app_config.debug, "quiz storage initialization failed: {s}", .{@errorName(err)});
+        return err;
+    };
+    defer quiz_store.deinit();
+
+    var ctx: Context = .{ .state = .{}, .storage = &storage, .quiz = &quiz_store };
     var easy: Easy = try .init(&ctx, .{ .devtools = app_config.debug, .window = null });
     defer easy.deinit();
 

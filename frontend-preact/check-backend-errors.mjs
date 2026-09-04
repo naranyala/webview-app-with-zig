@@ -180,6 +180,74 @@ check(
     'The PDF could not be saved.'
 );
 
+// 10. quiz CRUD round-trips through the mock store.
+await withWindow({}, async () => {
+  check('mock quiz list starts empty', (await backend.quizList()).length === 0);
+  const collection = await backend.quizCreateCollection(
+    'Zig Basics',
+    'First deck',
+    'gold',
+    'Custom'
+  );
+  check('mock quiz collection has an id', collection.id.startsWith('quiz-mock-col-'));
+  check(
+    'mock quiz list returns created deck',
+    (await backend.quizList()).length === 1
+  );
+  const updated = await backend.quizUpdateCollection(
+    collection.id,
+    'Zig 101',
+    'Renamed deck'
+  );
+  check('mock quiz collection renames', updated.title === 'Zig 101');
+  const question = await backend.quizCreateQuestion(
+    collection.id,
+    'General',
+    'What is Zig?',
+    'A systems language.'
+  );
+  check('mock quiz question has an id', question.id.startsWith('quiz-mock-q-'));
+  const edited = await backend.quizUpdateQuestion(
+    collection.id,
+    question.id,
+    'General',
+    'What is Zig?',
+    'A systems programming language.',
+    '',
+    'Starter',
+    'systems, languages'
+  );
+  check(
+    'mock quiz question edits answer and tags',
+    edited.answer === 'A systems programming language.' &&
+      edited.tags.length === 2
+  );
+  await backend.quizDeleteQuestion(collection.id, question.id);
+  check(
+    'mock quiz question deletes',
+    (await backend.quizList())[0].questions.length === 0
+  );
+  await backend.quizDeleteCollection(collection.id);
+  check('mock quiz deck deletes', (await backend.quizList()).length === 0);
+  try {
+    await backend.quizUpdateCollection('missing', 'T', 'D');
+    check('missing quiz deck rejected', false);
+  } catch (error) {
+    check('missing quiz deck code is QuizNotFound', errorDetails(error).code === 'QuizNotFound');
+  }
+  try {
+    await backend.quizCreateCollection('', 'D', '', '');
+    check('empty quiz title rejected', false);
+  } catch (error) {
+    check('empty quiz title code is InvalidArgument', errorDetails(error).code === 'InvalidArgument');
+  }
+});
+check(
+  'quiz errors have friendly messages',
+  errorDetails(new Error('{"code":"QuizNotFound"}')).message ===
+    'The quiz item no longer exists.'
+);
+
 if (failures > 0) {
   console.error(`${failures} bridge error test(s) failed`);
   process.exit(1);

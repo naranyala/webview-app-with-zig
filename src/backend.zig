@@ -12,6 +12,14 @@ pub const Storage = @import("backend/storage.zig").Storage;
 pub const Note = @import("backend/storage.zig").Note;
 pub const NoteInput = @import("backend/storage.zig").NoteInput;
 pub const UpdateNoteInput = @import("backend/storage.zig").UpdateNoteInput;
+pub const QuizStore = @import("backend/quiz_storage.zig").QuizStore;
+pub const QuizCollection = @import("backend/quiz_storage.zig").QuizCollection;
+pub const QuizQuestion = @import("backend/quiz_storage.zig").QuizQuestion;
+pub const CollectionInput = @import("backend/quiz_storage.zig").CollectionInput;
+pub const UpdateCollectionInput = @import("backend/quiz_storage.zig").UpdateCollectionInput;
+pub const QuestionInput = @import("backend/quiz_storage.zig").QuestionInput;
+pub const UpdateQuestionInput = @import("backend/quiz_storage.zig").UpdateQuestionInput;
+pub const DeleteQuestionInput = @import("backend/quiz_storage.zig").DeleteQuestionInput;
 
 pub const State = struct {
     count: i64 = 0,
@@ -130,6 +138,49 @@ pub fn parseDeleteNoteArgs(value: std.json.Value) RpcArgsError![]const u8 {
     return (try argumentStrings(value, 1))[0];
 }
 
+pub fn parseQuizCollectionInput(value: std.json.Value) RpcArgsError!CollectionInput {
+    const values = try argumentStrings(value, 4);
+    return .{ .title = values[0], .description = values[1], .tone = values[2], .level = values[3] };
+}
+
+pub fn parseQuizUpdateCollectionInput(value: std.json.Value) RpcArgsError!UpdateCollectionInput {
+    const values = try argumentStrings(value, 3);
+    return .{ .id = values[0], .title = values[1], .description = values[2] };
+}
+
+pub fn parseQuizCollectionId(value: std.json.Value) RpcArgsError![]const u8 {
+    return (try argumentStrings(value, 1))[0];
+}
+
+pub fn parseQuizQuestionInput(value: std.json.Value) RpcArgsError!QuestionInput {
+    const values = try argumentStrings(value, 4);
+    return .{
+        .collection_id = values[0],
+        .topic = values[1],
+        .question = values[2],
+        .answer = values[3],
+    };
+}
+
+pub fn parseQuizUpdateQuestionInput(value: std.json.Value) RpcArgsError!UpdateQuestionInput {
+    const values = try argumentStrings(value, 8);
+    return .{
+        .collection_id = values[0],
+        .id = values[1],
+        .topic = values[2],
+        .question = values[3],
+        .answer = values[4],
+        .explanation = values[5],
+        .difficulty = values[6],
+        .tags_csv = values[7],
+    };
+}
+
+pub fn parseQuizDeleteQuestionInput(value: std.json.Value) RpcArgsError!DeleteQuestionInput {
+    const values = try argumentStrings(value, 2);
+    return .{ .collection_id = values[0], .id = values[1] };
+}
+
 pub fn rpcErrorCode(err: anyerror) []const u8 {
     return switch (err) {
         error.MalformedJson => "MalformedJson",
@@ -141,6 +192,21 @@ pub fn rpcErrorCode(err: anyerror) []const u8 {
         error.PdfDecodeFailed => "PdfDecodeFailed",
         error.DocumentsUnavailable => "DocumentsUnavailable",
         error.PdfWriteFailed => "PdfWriteFailed",
+        error.QuizUnavailable => "QuizUnavailable",
+        error.QuizCorrupt => "QuizCorrupt",
+        error.QuizUnsupportedVersion => "QuizUnsupportedVersion",
+        error.QuizReadFailed => "QuizReadFailed",
+        error.QuizWriteFailed => "QuizWriteFailed",
+        error.QuizNotFound => "QuizNotFound",
+        error.QuizLimitReached => "QuizLimitReached",
+        error.QuizIdEmpty => "QuizIdEmpty",
+        error.QuizIdTooLong => "QuizIdTooLong",
+        error.QuizTitleEmpty => "QuizTitleEmpty",
+        error.QuizTitleTooLong => "QuizTitleTooLong",
+        error.QuizTextEmpty => "QuizTextEmpty",
+        error.QuizTextTooLong => "QuizTextTooLong",
+        error.QuizTagTooLong => "QuizTagTooLong",
+        error.QuizTooManyTags => "QuizTooManyTags",
         else => @import("backend/storage.zig").errorCode(err),
     };
 }
@@ -156,6 +222,21 @@ pub fn rpcErrorMessage(err: anyerror) []const u8 {
         error.PdfDecodeFailed => "pdf data could not be decoded",
         error.DocumentsUnavailable => "documents folder is unavailable",
         error.PdfWriteFailed => "pdf could not be written",
+        error.QuizUnavailable => "quiz storage is unavailable",
+        error.QuizCorrupt => "quiz data is corrupt",
+        error.QuizUnsupportedVersion => "quiz data uses an unsupported schema",
+        error.QuizReadFailed => "quiz data could not be read",
+        error.QuizWriteFailed => "quiz data could not be written",
+        error.QuizNotFound => "the requested quiz item was not found",
+        error.QuizLimitReached => "the quiz storage limit was reached",
+        error.QuizIdEmpty => "quiz id is required",
+        error.QuizIdTooLong => "quiz id is too long",
+        error.QuizTitleEmpty => "collection title is required",
+        error.QuizTitleTooLong => "collection title is too long",
+        error.QuizTextEmpty => "question and answer are required",
+        error.QuizTextTooLong => "quiz text is too long",
+        error.QuizTagTooLong => "quiz tag is too long",
+        error.QuizTooManyTags => "too many quiz tags",
         else => @import("backend/storage.zig").errorMessage(err),
     };
 }

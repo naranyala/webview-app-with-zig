@@ -20,6 +20,36 @@ declare global {
     ): Promise<Note>;
     deleteNote(id: string): Promise<void>;
     savePdf(filename: string, dataBase64: string): Promise<SaveResult>;
+    quizList(): Promise<QuizCollection[]>;
+    quizCreateCollection(
+      title: string,
+      description: string,
+      tone: string,
+      level: string
+    ): Promise<QuizCollection>;
+    quizUpdateCollection(
+      id: string,
+      title: string,
+      description: string
+    ): Promise<QuizCollection>;
+    quizDeleteCollection(id: string): Promise<void>;
+    quizCreateQuestion(
+      collectionId: string,
+      topic: string,
+      question: string,
+      answer: string
+    ): Promise<QuizQuestion>;
+    quizUpdateQuestion(
+      collectionId: string,
+      id: string,
+      topic: string,
+      question: string,
+      answer: string,
+      explanation: string,
+      difficulty: string,
+      tagsCsv: string
+    ): Promise<QuizQuestion>;
+    quizDeleteQuestion(collectionId: string, id: string): Promise<void>;
     minimizeWindow(): Promise<void>;
     maximizeWindow(): Promise<void>;
     restoreWindow(): Promise<void>;
@@ -38,6 +68,27 @@ interface Note {
 
 interface SaveResult {
   path: string;
+}
+
+interface QuizQuestion {
+  id: string;
+  topic: string;
+  question: string;
+  answer: string;
+  explanation: string;
+  difficulty: string;
+  tags: string[];
+}
+
+interface QuizCollection {
+  id: string;
+  title: string;
+  shortTitle: string;
+  description: string;
+  tone: string;
+  icon: string;
+  level: string;
+  questions: QuizQuestion[];
 }
 
 export {};

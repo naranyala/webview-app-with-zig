@@ -4,24 +4,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const expected = [
-  'increment',
-  'reset',
-  'getSystemInfo',
-  'getTimestamp',
-  'getStatus',
-  'getNotes',
-  'createNote',
-  'updateNote',
-  'deleteNote',
-  'savePdf',
-  'minimizeWindow',
-  'maximizeWindow',
-  'restoreWindow',
-  'closeWindow'
-];
-
 const root = __dirname;
+const corePlugin = fs.readFileSync(
+  path.join(root, '..', 'src', 'backend', 'core_plugin.zig'),
+  'utf8'
+);
 const bindings = fs.readFileSync(
   path.join(root, 'src', 'bindings.d.ts'),
   'utf8'
@@ -29,6 +16,16 @@ const bindings = fs.readFileSync(
 const bridge = fs.readFileSync(
   path.join(root, 'src', 'backend.js'),
   'utf8'
+);
+const namesBlock = corePlugin.match(
+  /pub const bound_names:[\s\S]*?= &\.\{([\s\S]*?)\};/
+);
+if (!namesBlock) {
+  console.error('could not read bound_names from src/backend/core_plugin.zig');
+  process.exit(1);
+}
+const expected = [...namesBlock[1].matchAll(/"([^"]+)"/g)].map(
+  ([, name]) => name
 );
 
 let failed = false;

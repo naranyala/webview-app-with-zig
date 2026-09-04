@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
+import { backend, backendError } from '../backend.js';
+import { parseQuizCollectionList } from '../schemas.js';
 import { styles, sx, toneStyle } from '../stylex-styles.js';
-import { getQuizCollection, quizCollections } from './quiz-data.js';
+import { quizCollections } from './quiz-data.js';
 
 function scoreLabel(score, total) {
   if (score === total) return 'Perfect recall';
@@ -9,19 +11,116 @@ function scoreLabel(score, total) {
   return 'Ready when you are';
 }
 
-function QuizEditor() {
-  const [collectionId, setCollectionId] = useState(quizCollections[0].id);
+// Bundled decks ship with the app and stay read-only; user decks live in
+// the native quiz store (or the browser mock) and are fully editable.
+function withIds(collections, readOnly) {
+  return (collections || []).map((collection) => ({
+    ...collection,
+    readOnly,
+    questions: (collection.questions || []).map((item, index) => ({
+      ...item,
+      id: item.id || `${collection.id}-q-${index + 1}`
+    }))
+  }));
+}
+
+const emptyQuestionDraft = {
+  topic: '',
+  question: '',
+  answer: '',
+  explanation: '',
+  difficulty: '',
+  tags: ''
+};
+
+function QuizEditor({
+  collections,
+  storageError,
+  onCreateCollection,
+  onUpdateCollection,
+  onDeleteCollection,
+  onCreateQuestion,
+  onUpdateQuestion,
+  onDeleteQuestion
+}) {
+  const [collectionId, setCollectionId] = useState(collections[0]?.id || '');
   const [query, setQuery] = useState('');
-  const collection = getQuizCollection(collectionId) ?? quizCollections[0];
+  const [collectionTitle, setCollectionTitle] = useState('');
+  const [collectionDescription, setCollectionDescription] = useState('');
+  const [newCollectionTitle, setNewCollectionTitle] = useState('');
+  const [newCollectionDescription, setNewCollectionDescription] = useState('');
+  const [questionDraft, setQuestionDraft] = useState({ ...emptyQuestionDraft });
+  const [editingQuestionId, setEditingQuestionId] = useState(null);
+
+  const collection =
+    collections.find((item) => item.id === collectionId) || collections[0];
   const filteredQuestions = useMemo(() => {
+    if (!collection) return [];
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) return collection.questions;
     return collection.questions.filter((item) =>
-      `${item.question} ${item.answer} ${item.tags.join(' ')}`
+      `${item.question} ${item.answer} ${(item.tags || []).join(' ')}`
         .toLowerCase()
         .includes(normalizedQuery)
     );
   }, [collection, query]);
+
+  useEffect(() => {
+    if (collection) {
+      setCollectionTitle(collection.title);
+      setCollectionDescription(collection.description || '');
+    }
+  }, [collection]);
+
+  if (!collection) {
+    return (
+      <main className={sx('quiz-shell')}>
+        <p className={sx('quiz-empty')}>No decks available.</p>
+      </main>
+    );
+  }
+
+  function startEditingQuestion(item) {
+    setEditingQuestionId(item.id);
+    setQuestionDraft({
+      topic: item.topic || '',
+      question: item.question,
+      answer: item.answer,
+      explanation: item.explanation || '',
+      difficulty: item.difficulty || '',
+      tags: (item.tags || []).join(', ')
+    });
+  }
+
+  function cancelEditingQuestion() {
+    setEditingQuestionId(null);
+    setQuestionDraft({ ...emptyQuestionDraft });
+  }
+
+  async function saveQuestion() {
+    if (!questionDraft.question.trim() || !questionDraft.answer.trim()) return;
+    let saved = null;
+    if (editingQuestionId) {
+      saved = await onUpdateQuestion(
+        collection.id,
+        editingQuestionId,
+        questionDraft.topic,
+        questionDraft.question,
+        questionDraft.answer,
+        questionDraft.explanation,
+        questionDraft.difficulty,
+        questionDraft.tags
+      );
+    } else {
+      saved = await onCreateQuestion(
+        collection.id,
+        questionDraft.topic,
+        questionDraft.question,
+        questionDraft.answer
+      );
+    }
+    if (saved) cancelEditingQuestion();
+  }
 
   return (
     <main className={sx('quiz-shell')}>
@@ -31,12 +130,20 @@ function QuizEditor() {
             <p className={sx('eyebrow')}>Deck workshop</p>
             <h1 className={sx('quiz-title')}>Quiz editor</h1>
             <p className={sx('lede')}>
-              Review the bundled knowledge decks. Editing and persistence will
-              arrive with the quiz authoring workflow.
+              Bundled decks are read-only references. Your own decks support
+              full create, edit, and delete.
             </p>
           </div>
-          <div className={sx('quiz-editor-badge')}>Read only</div>
+          <div className={sx('quiz-editor-badge')}>
+            {collection.readOnly ? 'Read only' : 'Editable'}
+          </div>
         </header>
+
+        {storageError && (
+          <p className={sx('error')} role="alert">
+            {storageError}
+          </p>
+        )}
 
         <section className={sx('quiz-toolbar')} aria-label="Editor controls">
           <div className={sx('selectWrap')}>
@@ -53,11 +160,13 @@ function QuizEditor() {
               onChange={(event) => {
                 setCollectionId(event.currentTarget.value);
                 setQuery('');
+                cancelEditingQuestion();
               }}
             >
-              {quizCollections.map((item) => (
+              {collections.map((item) => (
                 <option value={item.id} key={item.id}>
                   {item.title}
+                  {item.readOnly ? ' (bundled)' : ''}
                 </option>
               ))}
             </select>
@@ -93,6 +202,169 @@ function QuizEditor() {
           </span>
         </section>
 
+        {!collection.readOnly && (
+          <section className={sx('quiz-toolbar')} aria-label="Edit collection">
+            <div className={sx('selectWrap')}>
+              <label className={sx('select-label')} htmlFor="quiz-edit-title">
+                Deck title
+              </label>
+              <input
+                className={sx('search-input')}
+                id="quiz-edit-title"
+                value={collectionTitle}
+                onInput={(event) =>
+                  setCollectionTitle(event.currentTarget.value)
+                }
+              />
+            </div>
+            <label className={sx('quiz-editor-search')}>
+              <span className={sx('sr-only')}>Deck description</span>
+              <input
+                className={sx('search-input')}
+                placeholder="Deck description"
+                value={collectionDescription}
+                onInput={(event) =>
+                  setCollectionDescription(event.currentTarget.value)
+                }
+              />
+            </label>
+            <button
+              type="button"
+              className={sx('quiz-button', 'quiz-secondary')}
+              onClick={() =>
+                onUpdateCollection(
+                  collection.id,
+                  collectionTitle,
+                  collectionDescription
+                )
+              }
+            >
+              Save deck
+            </button>
+            <button
+              type="button"
+              className={sx('quiz-button', 'quiz-secondary')}
+              onClick={async () => {
+                const deleted = await onDeleteCollection(collection.id);
+                if (deleted) setCollectionId('');
+              }}
+            >
+              Delete deck
+            </button>
+          </section>
+        )}
+
+        {!collection.readOnly && (
+          <section
+            className={sx('quiz-editor-list')}
+            aria-label="Question form"
+          >
+            <article className={sx('quiz-editor-row')}>
+              <span className={sx('quiz-number')}>
+                {editingQuestionId ? '✎' : '+'}
+              </span>
+              <div>
+                <input
+                  className={sx('search-input')}
+                  placeholder="Topic (optional)"
+                  value={questionDraft.topic}
+                  onInput={(event) =>
+                    setQuestionDraft((current) => ({
+                      ...current,
+                      topic: event.currentTarget.value
+                    }))
+                  }
+                  aria-label="Question topic"
+                />
+                <input
+                  className={sx('search-input')}
+                  placeholder="Prompt"
+                  value={questionDraft.question}
+                  onInput={(event) =>
+                    setQuestionDraft((current) => ({
+                      ...current,
+                      question: event.currentTarget.value
+                    }))
+                  }
+                  aria-label="Question prompt"
+                />
+                <input
+                  className={sx('search-input')}
+                  placeholder="Answer"
+                  value={questionDraft.answer}
+                  onInput={(event) =>
+                    setQuestionDraft((current) => ({
+                      ...current,
+                      answer: event.currentTarget.value
+                    }))
+                  }
+                  aria-label="Question answer"
+                />
+                {editingQuestionId && (
+                  <input
+                    className={sx('search-input')}
+                    placeholder="Explanation (optional)"
+                    value={questionDraft.explanation}
+                    onInput={(event) =>
+                      setQuestionDraft((current) => ({
+                        ...current,
+                        explanation: event.currentTarget.value
+                      }))
+                    }
+                    aria-label="Question explanation"
+                  />
+                )}
+                {editingQuestionId && (
+                  <input
+                    className={sx('search-input')}
+                    placeholder="Difficulty (optional)"
+                    value={questionDraft.difficulty}
+                    onInput={(event) =>
+                      setQuestionDraft((current) => ({
+                        ...current,
+                        difficulty: event.currentTarget.value
+                      }))
+                    }
+                    aria-label="Question difficulty"
+                  />
+                )}
+                {editingQuestionId && (
+                  <input
+                    className={sx('search-input')}
+                    placeholder="Tags, comma separated"
+                    value={questionDraft.tags}
+                    onInput={(event) =>
+                      setQuestionDraft((current) => ({
+                        ...current,
+                        tags: event.currentTarget.value
+                      }))
+                    }
+                    aria-label="Question tags"
+                  />
+                )}
+              </div>
+              <div>
+                <button
+                  type="button"
+                  className={sx('quiz-button', 'quiz-primary')}
+                  onClick={saveQuestion}
+                >
+                  {editingQuestionId ? 'Save' : 'Add'}
+                </button>
+                {editingQuestionId && (
+                  <button
+                    type="button"
+                    className={sx('quiz-button', 'quiz-secondary')}
+                    onClick={cancelEditingQuestion}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </article>
+          </section>
+        )}
+
         <section
           className={sx('quiz-editor-list')}
           aria-label={`${collection.title} prompts`}
@@ -109,14 +381,79 @@ function QuizEditor() {
                 <h3 className={sx('quiz-row-title')}>{item.question}</h3>
                 <p className={sx('quiz-row-text')}>{item.answer}</p>
               </div>
-              <span className={sx('difficulty', toneStyle(collection.tone))}>
-                {item.difficulty}
-              </span>
+              {!collection.readOnly && (
+                <div>
+                  <button
+                    type="button"
+                    className={sx('quiz-button', 'quiz-secondary')}
+                    onClick={() => startEditingQuestion(item)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className={sx('quiz-button', 'quiz-secondary')}
+                    onClick={() => onDeleteQuestion(collection.id, item.id)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+              {collection.readOnly && (
+                <span className={sx('difficulty', toneStyle(collection.tone))}>
+                  {item.difficulty}
+                </span>
+              )}
             </article>
           ))}
           {filteredQuestions.length === 0 && (
             <p className={sx('quiz-empty')}>No prompts match that search.</p>
           )}
+        </section>
+
+        <section className={sx('quiz-toolbar')} aria-label="New collection">
+          <div className={sx('selectWrap')}>
+            <label className={sx('select-label')} htmlFor="quiz-new-title">
+              New deck title
+            </label>
+            <input
+              className={sx('search-input')}
+              id="quiz-new-title"
+              placeholder="My deck"
+              value={newCollectionTitle}
+              onInput={(event) =>
+                setNewCollectionTitle(event.currentTarget.value)
+              }
+            />
+          </div>
+          <label className={sx('quiz-editor-search')}>
+            <span className={sx('sr-only')}>New deck description</span>
+            <input
+              className={sx('search-input')}
+              placeholder="What is this deck about?"
+              value={newCollectionDescription}
+              onInput={(event) =>
+                setNewCollectionDescription(event.currentTarget.value)
+              }
+            />
+          </label>
+          <button
+            type="button"
+            className={sx('quiz-button', 'quiz-primary')}
+            onClick={async () => {
+              const created = await onCreateCollection(
+                newCollectionTitle,
+                newCollectionDescription
+              );
+              if (created) {
+                setNewCollectionTitle('');
+                setNewCollectionDescription('');
+                setCollectionId(created.id);
+              }
+            }}
+          >
+            + New deck
+          </button>
         </section>
       </div>
     </main>
@@ -124,24 +461,194 @@ function QuizEditor() {
 }
 
 export function Quiz({ mode = 'session' }) {
-  if (mode === 'editor') return <QuizEditor />;
+  const [userCollections, setUserCollections] = useState([]);
+  const [storageError, setStorageError] = useState('');
 
-  const [collectionId, setCollectionId] = useState(quizCollections[0].id);
+  useEffect(() => {
+    let cancelled = false;
+    backend
+      .quizList()
+      .then((loaded) => {
+        if (cancelled) return;
+        setUserCollections(parseQuizCollectionList(loaded));
+      })
+      .catch((error) => {
+        if (!cancelled) setStorageError(backendError(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const collections = useMemo(
+    () => [
+      ...withIds(quizCollections, true),
+      ...withIds(userCollections, false)
+    ],
+    [userCollections]
+  );
+
+  function replaceCollection(stored) {
+    if (!stored?.id) return null;
+    setUserCollections((current) =>
+      current.some((item) => item.id === stored.id)
+        ? current.map((item) => (item.id === stored.id ? stored : item))
+        : [...current, stored]
+    );
+    return stored;
+  }
+
+  async function runGuarded(label, call) {
+    setStorageError('');
+    try {
+      return await call();
+    } catch (error) {
+      setStorageError(`${label}: ${backendError(error)}`);
+      return null;
+    }
+  }
+
+  async function createCollection(title, description) {
+    if (!title.trim()) {
+      setStorageError('Collection title is required.');
+      return null;
+    }
+    const stored = await runGuarded('Create deck failed', () =>
+      backend.quizCreateCollection(title, description, 'gold', 'Custom')
+    );
+    return replaceCollection(stored);
+  }
+
+  async function updateCollection(id, title, description) {
+    const stored = await runGuarded('Save deck failed', () =>
+      backend.quizUpdateCollection(id, title, description)
+    );
+    return replaceCollection(stored);
+  }
+
+  async function deleteCollection(id) {
+    const ok = await runGuarded('Delete deck failed', () =>
+      backend.quizDeleteCollection(id)
+    );
+    if (ok !== null) {
+      setUserCollections((current) => current.filter((item) => item.id !== id));
+      return true;
+    }
+    return false;
+  }
+
+  async function createQuestion(collectionId, topic, question, answer) {
+    const stored = await runGuarded('Add prompt failed', () =>
+      backend.quizCreateQuestion(collectionId, topic, question, answer)
+    );
+    if (!stored) return null;
+    setUserCollections((current) =>
+      current.map((item) =>
+        item.id === collectionId
+          ? { ...item, questions: [...item.questions, stored] }
+          : item
+      )
+    );
+    return stored;
+  }
+
+  async function updateQuestion(
+    collectionId,
+    id,
+    topic,
+    question,
+    answer,
+    explanation,
+    difficulty,
+    tagsCsv
+  ) {
+    const stored = await runGuarded('Save prompt failed', () =>
+      backend.quizUpdateQuestion(
+        collectionId,
+        id,
+        topic,
+        question,
+        answer,
+        explanation,
+        difficulty,
+        tagsCsv
+      )
+    );
+    if (!stored) return null;
+    setUserCollections((current) =>
+      current.map((item) =>
+        item.id === collectionId
+          ? {
+              ...item,
+              questions: item.questions.map((entry) =>
+                entry.id === id ? stored : entry
+              )
+            }
+          : item
+      )
+    );
+    return stored;
+  }
+
+  async function deleteQuestion(collectionId, id) {
+    const ok = await runGuarded('Delete prompt failed', () =>
+      backend.quizDeleteQuestion(collectionId, id)
+    );
+    if (ok !== null) {
+      setUserCollections((current) =>
+        current.map((item) =>
+          item.id === collectionId
+            ? {
+                ...item,
+                questions: item.questions.filter((entry) => entry.id !== id)
+              }
+            : item
+        )
+      );
+      return true;
+    }
+    return false;
+  }
+
+  if (mode === 'editor') {
+    return (
+      <QuizEditor
+        collections={collections}
+        storageError={storageError}
+        onCreateCollection={createCollection}
+        onUpdateCollection={updateCollection}
+        onDeleteCollection={deleteCollection}
+        onCreateQuestion={createQuestion}
+        onUpdateQuestion={updateQuestion}
+        onDeleteQuestion={deleteQuestion}
+      />
+    );
+  }
+
+  return <QuizSession collections={collections} storageError={storageError} />;
+}
+
+function QuizSession({ collections, storageError }) {
+  const [collectionId, setCollectionId] = useState(
+    () => collections[0]?.id || ''
+  );
   const [questionIndex, setQuestionIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [known, setKnown] = useState(() => new Set());
   const [query, setQuery] = useState('');
 
-  const collection = getQuizCollection(collectionId) ?? quizCollections[0];
-  const question = collection.questions[questionIndex];
-  const progress = Math.round(
-    ((questionIndex + 1) / collection.questions.length) * 100
-  );
+  const collection =
+    collections.find((item) => item.id === collectionId) || collections[0];
+  const question = collection?.questions[questionIndex];
+  const progress = collection
+    ? Math.round(((questionIndex + 1) / collection.questions.length) * 100)
+    : 0;
   const filteredQuestions = useMemo(() => {
+    if (!collection) return [];
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) return collection.questions;
     return collection.questions.filter((item) =>
-      `${item.question} ${item.answer} ${item.tags.join(' ')}`
+      `${item.question} ${item.answer} ${(item.tags || []).join(' ')}`
         .toLowerCase()
         .includes(normalizedQuery)
     );
@@ -161,6 +668,7 @@ export function Quiz({ mode = 'session' }) {
   }
 
   function markKnown() {
+    if (!question) return;
     setKnown((current) => {
       const next = new Set(current);
       next.add(question.id);
@@ -170,6 +678,7 @@ export function Quiz({ mode = 'session' }) {
   }
 
   function nextQuestion() {
+    if (!collection) return;
     setQuestionIndex((current) => (current + 1) % collection.questions.length);
     setRevealed(false);
   }
@@ -178,6 +687,18 @@ export function Quiz({ mode = 'session' }) {
     setQuestionIndex(0);
     setRevealed(false);
     setKnown(new Set());
+  }
+
+  if (!collection || collection.questions.length === 0) {
+    return (
+      <main className={sx('quiz-shell')}>
+        <div className={sx('quiz-layout')}>
+          <p className={sx('quiz-empty')}>
+            No prompts here yet. Add some in the Quiz Editor.
+          </p>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -198,6 +719,12 @@ export function Quiz({ mode = 'session' }) {
           </div>
         </header>
 
+        {storageError && (
+          <p className={sx('error')} role="alert">
+            {storageError}
+          </p>
+        )}
+
         <section
           className={sx('quiz-collection')}
           aria-label="Quiz collections"
@@ -212,9 +739,10 @@ export function Quiz({ mode = 'session' }) {
               value={collection.id}
               onChange={selectCollection}
             >
-              {quizCollections.map((item) => (
+              {collections.map((item) => (
                 <option value={item.id} key={item.id}>
                   {item.title}
+                  {item.readOnly ? '' : ' (yours)'}
                 </option>
               ))}
             </select>
@@ -261,7 +789,7 @@ export function Quiz({ mode = 'session' }) {
               <span className={sx('difficulty', toneStyle(collection.tone))}>
                 {question.difficulty}
               </span>
-              <span>{question.tags.join(' / ')}</span>
+              <span>{(question.tags || []).join(' / ')}</span>
             </div>
             <p className={sx('quiz-kicker')}>
               Prompt {String(questionIndex + 1).padStart(2, '0')}

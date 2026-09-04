@@ -33,13 +33,14 @@ Details live in [`docs/`](docs/): [chain notes](docs/chain-notes.md),
 │       ├── plugin.zig          # Backend plugin registry + lifecycle hooks
 │       ├── core_plugin.zig     # Binding registration + canonical name list
 │       ├── storage.zig         # Versioned JSON note store (state.json)
+│       ├── quiz_storage.zig    # Versioned JSON quiz store (quizzes.json)
 │       └── log.zig             # Leveled logging
 ├── frontend-preact/            # Preact frontend (esbuild + StyleX)
 │   ├── build.js                # Bundle + single-file dist/index.html
 │   └── src/
 │       ├── App.jsx             # Launcher, rail, submenus, window controls
 │       ├── backend.js          # window.* Zig bridge with browser mocks
-│       ├── bindings.d.ts       # Typed bridge declarations (14 bindings)
+│       ├── bindings.d.ts       # Typed bridge declarations (21 bindings)
 │       └── plugins/            # Tool UIs + shared modules
 │           ├── chain-notes.jsx / qna.js
 │           ├── note-search.js      # fuzzysort adapter (+ benchmark engines)
@@ -91,7 +92,7 @@ sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev
 zig build run
 
 # Or step by step:
-cd frontend-preact && npm install && npm run build && cd ..
+cd frontend-preact && npm ci && npm run build && cd ..
 zig build
 ./zig-out/bin/webview-app
 ```
@@ -109,7 +110,8 @@ zig build dev          # frontend dev server (Preact shell + mocks)
 ```
 
 Inside the dev server the Zig bindings don't exist, so `src/backend.js` falls
-back to in-browser mocks (notes persist to `localStorage` when available).
+back to in-browser mocks (notes and custom quiz decks persist to `localStorage`
+when available).
 
 ## Tests & Benchmarks
 
@@ -132,8 +134,9 @@ See [docs/testing.md](docs/testing.md) for the full matrix.
    loose bindings; see [docs/backend.md](docs/backend.md).
 3. **Communication**: the frontend calls Zig functions via `window.*`, which
    return Promises. Failures arrive as stable `{code, message}` envelopes.
-4. **Persistence**: notes live in a versioned `state.json` under the OS data
-   dir; PDF exports are written to the user's Documents folder via `savePdf`.
+4. **Persistence**: notes live in a versioned `state.json` and custom quiz
+   decks in `quizzes.json` under the OS data dir; PDF exports are written to the
+   user's Documents folder via `savePdf`.
 5. **Launcher**: the app starts as a workspace launcher with a fixed rail,
    expandable submenus (Tools, Quiz, Paper), and native window actions.
 

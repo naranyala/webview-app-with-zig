@@ -16,8 +16,11 @@
  * helper falls back to a mock that keeps the UI usable in the browser.
  */
 
+import { parseQuizCollectionList } from './schemas.js';
+
 const DEFAULT_TIMEOUT_MS = 5000;
 const MOCK_NOTES_STORAGE_KEY = 'webview-app.chain-notes';
+const MOCK_QUIZ_STORAGE_KEY = 'webview-app.quiz-collections';
 
 let defaultTimeoutMs = DEFAULT_TIMEOUT_MS;
 let mockNotes = loadMockNotes();
@@ -49,6 +52,85 @@ function persistMockNotes() {
   } catch {
     // The in-memory mock remains usable when browser storage is unavailable.
   }
+}
+
+let mockQuizCollections = loadMockQuizCollections();
+let nextMockQuizId =
+  mockQuizCollections.reduce((highest, collection) => {
+    const match = /^quiz-mock-(?:col|q)-(\d+)$/.exec(collection.id || '');
+    const questionBest = (collection.questions || []).reduce(
+      (inner, question) => {
+        const innerMatch = /^quiz-mock-(?:col|q)-(\d+)$/.exec(
+          question.id || ''
+        );
+        return Math.max(inner, innerMatch ? Number(innerMatch[1]) : 0);
+      },
+      0
+    );
+    return Math.max(highest, match ? Number(match[1]) : 0, questionBest);
+  }, 0) + 1;
+
+function loadMockQuizCollections() {
+  try {
+    const raw = globalThis.window?.localStorage?.getItem(MOCK_QUIZ_STORAGE_KEY);
+    const collections = raw ? JSON.parse(raw) : [];
+    return parseQuizCollectionList(collections);
+  } catch {
+    return [];
+  }
+}
+
+function persistMockQuizCollections() {
+  try {
+    globalThis.window?.localStorage?.setItem(
+      MOCK_QUIZ_STORAGE_KEY,
+      JSON.stringify(mockQuizCollections)
+    );
+  } catch {
+    // The in-memory mock remains usable when browser storage is unavailable.
+  }
+}
+
+function parseCsvTags(tagsCsv) {
+  return String(tagsCsv || '')
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function cloneQuizCollection(collection) {
+  return {
+    ...collection,
+    questions: collection.questions.map((question) => ({
+      ...question,
+      tags: [...question.tags]
+    }))
+  };
+}
+
+function mockQuizCollection(title, description, tone, level) {
+  return {
+    id: `quiz-mock-col-${nextMockQuizId++}`,
+    title: title.trim(),
+    shortTitle: title.trim(),
+    description,
+    tone: tone || 'gold',
+    icon: '',
+    level: level || 'Custom',
+    questions: []
+  };
+}
+
+function mockQuizQuestion(topic, question, answer) {
+  return {
+    id: `quiz-mock-q-${nextMockQuizId++}`,
+    topic: topic || '',
+    question,
+    answer,
+    explanation: '',
+    difficulty: '',
+    tags: []
+  };
 }
 
 export function setDefaultTimeout(ms) {
@@ -107,6 +189,32 @@ function friendlyMessage(code, fallback) {
       return 'The note could not be saved.';
     case 'NoteNotFound':
       return 'The note no longer exists.';
+    case 'QuizUnavailable':
+      return 'Quiz storage is unavailable.';
+    case 'QuizCorrupt':
+      return 'Quiz data is corrupt.';
+    case 'QuizWriteFailed':
+      return 'Quiz data could not be saved.';
+    case 'QuizNotFound':
+      return 'The quiz item no longer exists.';
+    case 'QuizLimitReached':
+      return 'The quiz storage limit was reached.';
+    case 'QuizTitleEmpty':
+      return 'Collection title is required.';
+    case 'QuizTitleTooLong':
+      return 'Collection title is too long.';
+    case 'QuizIdEmpty':
+      return 'Quiz id is required.';
+    case 'QuizIdTooLong':
+      return 'Quiz id is too long.';
+    case 'QuizTextEmpty':
+      return 'Question and answer are required.';
+    case 'QuizTextTooLong':
+      return 'Quiz text is too long.';
+    case 'QuizTagTooLong':
+      return 'A quiz tag is too long.';
+    case 'QuizTooManyTags':
+      return 'Too many quiz tags were provided.';
     case 'InvalidPdfName':
       return 'The PDF filename is invalid.';
     case 'PdfTooLarge':
@@ -220,6 +328,84 @@ function mockNote(title, tag, body) {
   };
 }
 
+function validateQuizId(id) {
+  if (typeof id !== 'string' || id.length === 0) {
+    return 'quiz id is required';
+  }
+  if (id.length > 200) return 'quiz id is too long';
+  return null;
+}
+
+function validateCollectionFields(title, description, tone, level) {
+  if (typeof title !== 'string' || title.trim().length === 0) {
+    return 'collection title is required';
+  }
+  if (title.length > 200) return 'collection title is too long';
+  if (typeof description !== 'string' || description.length > 20000) {
+    return 'collection description is too long';
+  }
+  if (typeof tone !== 'string' || tone.length > 200) {
+    return 'collection tone is too long';
+  }
+  if (typeof level !== 'string' || level.length > 200) {
+    return 'collection level is too long';
+  }
+  return null;
+}
+
+function validateQuestionFields(collectionId, topic, question, answer) {
+  const idError = validateQuizId(collectionId);
+  if (idError) return idError;
+  if (typeof topic !== 'string' || topic.length > 200) {
+    return 'question topic is too long';
+  }
+  if (typeof question !== 'string' || question.trim().length === 0) {
+    return 'question text is required';
+  }
+  if (typeof answer !== 'string' || answer.trim().length === 0) {
+    return 'answer text is required';
+  }
+  if (question.length > 20000 || answer.length > 20000) {
+    return 'question text is too long';
+  }
+  return null;
+}
+
+function validateFullQuestionFields(
+  id,
+  collectionId,
+  topic,
+  question,
+  answer,
+  explanation,
+  difficulty,
+  tagsCsv
+) {
+  const idError = validateQuizId(id);
+  if (idError) return idError;
+  const baseError = validateQuestionFields(
+    collectionId,
+    topic,
+    question,
+    answer
+  );
+  if (baseError) return baseError;
+  if (typeof explanation !== 'string' || explanation.length > 20000) {
+    return 'question explanation is too long';
+  }
+  if (typeof difficulty !== 'string' || difficulty.length > 64) {
+    return 'question difficulty is too long';
+  }
+  if (typeof tagsCsv !== 'string') return 'question tags are invalid';
+  const tags = tagsCsv
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+  if (tags.length > 16) return 'too many question tags';
+  if (tags.some((tag) => tag.length > 64)) return 'question tag is too long';
+  return null;
+}
+
 function callBinding(name, ...args) {
   let result;
   if (hasBinding(name)) {
@@ -263,6 +449,95 @@ function callBinding(name, ...args) {
       result = Promise.resolve(undefined);
     } else if (name === 'savePdf') {
       result = Promise.resolve({ path: `Documents/${args[0]}` });
+    } else if (name === 'quizList') {
+      result = Promise.resolve(mockQuizCollections.map(cloneQuizCollection));
+    } else if (name === 'quizCreateCollection') {
+      const collection = mockQuizCollection(...args);
+      mockQuizCollections = [...mockQuizCollections, collection];
+      persistMockQuizCollections();
+      result = Promise.resolve(cloneQuizCollection(collection));
+    } else if (name === 'quizUpdateCollection') {
+      const [id, title, description] = args;
+      const found = mockQuizCollections.find((item) => item.id === id);
+      if (!found) result = Promise.reject(new Error('QuizNotFound'));
+      else {
+        const updated = { ...found, title: title.trim(), description };
+        mockQuizCollections = mockQuizCollections.map((item) =>
+          item.id === id ? updated : item
+        );
+        persistMockQuizCollections();
+        result = Promise.resolve(cloneQuizCollection(updated));
+      }
+    } else if (name === 'quizDeleteCollection') {
+      const found = mockQuizCollections.some(
+        (collection) => collection.id === args[0]
+      );
+      if (!found) result = Promise.reject(new Error('QuizNotFound'));
+      else {
+        mockQuizCollections = mockQuizCollections.filter(
+          (collection) => collection.id !== args[0]
+        );
+        persistMockQuizCollections();
+        result = Promise.resolve(undefined);
+      }
+    } else if (name === 'quizCreateQuestion') {
+      const [collectionId, topic, question, answer] = args;
+      const collection = mockQuizCollections.find(
+        (item) => item.id === collectionId
+      );
+      if (!collection) result = Promise.reject(new Error('QuizNotFound'));
+      else {
+        const created = mockQuizQuestion(topic, question, answer);
+        collection.questions = [...collection.questions, created];
+        persistMockQuizCollections();
+        result = Promise.resolve({ ...created, tags: [...created.tags] });
+      }
+    } else if (name === 'quizUpdateQuestion') {
+      const [
+        collectionId,
+        id,
+        topic,
+        question,
+        answer,
+        explanation,
+        difficulty,
+        tagsCsv
+      ] = args;
+      const collection = mockQuizCollections.find(
+        (item) => item.id === collectionId
+      );
+      const found = collection?.questions.find((item) => item.id === id);
+      if (!found) result = Promise.reject(new Error('QuizNotFound'));
+      else {
+        const updated = {
+          ...found,
+          topic,
+          question,
+          answer,
+          explanation,
+          difficulty,
+          tags: parseCsvTags(tagsCsv)
+        };
+        collection.questions = collection.questions.map((item) =>
+          item.id === id ? updated : item
+        );
+        persistMockQuizCollections();
+        result = Promise.resolve({ ...updated, tags: [...updated.tags] });
+      }
+    } else if (name === 'quizDeleteQuestion') {
+      const [collectionId, id] = args;
+      const collection = mockQuizCollections.find(
+        (item) => item.id === collectionId
+      );
+      const found = collection?.questions.some((item) => item.id === id);
+      if (!found) result = Promise.reject(new Error('QuizNotFound'));
+      else {
+        collection.questions = collection.questions.filter(
+          (item) => item.id !== id
+        );
+        persistMockQuizCollections();
+        result = Promise.resolve(undefined);
+      }
     } else {
       result = Promise.resolve(mockValue(name));
     }
@@ -281,6 +556,13 @@ const CORE_BINDINGS = [
   'updateNote',
   'deleteNote',
   'savePdf',
+  'quizList',
+  'quizCreateCollection',
+  'quizUpdateCollection',
+  'quizDeleteCollection',
+  'quizCreateQuestion',
+  'quizUpdateQuestion',
+  'quizDeleteQuestion',
   'minimizeWindow',
   'maximizeWindow',
   'restoreWindow',
@@ -332,6 +614,94 @@ export const backend = {
       return invalidArgument('pdf data is invalid');
     }
     return callBinding('savePdf', filename, dataBase64);
+  },
+  quizList: () => callBinding('quizList'),
+  quizCreateCollection: (title, description, tone, level) => {
+    const validationError = validateCollectionFields(
+      title,
+      description,
+      tone,
+      level
+    );
+    return validationError
+      ? invalidArgument(validationError)
+      : callBinding('quizCreateCollection', title, description, tone, level);
+  },
+  quizUpdateCollection: (id, title, description) => {
+    const idError = validateQuizId(id);
+    if (idError) return invalidArgument(idError);
+    const validationError = validateCollectionFields(
+      title,
+      description,
+      '',
+      ''
+    );
+    if (validationError) return invalidArgument(validationError);
+    return callBinding('quizUpdateCollection', id, title, description);
+  },
+  quizDeleteCollection: (id) => {
+    const idError = validateQuizId(id);
+    return idError
+      ? invalidArgument(idError)
+      : callBinding('quizDeleteCollection', id);
+  },
+  quizCreateQuestion: (collectionId, topic, question, answer) => {
+    const validationError = validateQuestionFields(
+      collectionId,
+      topic,
+      question,
+      answer
+    );
+    return validationError
+      ? invalidArgument(validationError)
+      : callBinding(
+          'quizCreateQuestion',
+          collectionId,
+          topic,
+          question,
+          answer
+        );
+  },
+  quizUpdateQuestion: (
+    collectionId,
+    id,
+    topic,
+    question,
+    answer,
+    explanation,
+    difficulty,
+    tagsCsv
+  ) => {
+    const validationError = validateFullQuestionFields(
+      id,
+      collectionId,
+      topic,
+      question,
+      answer,
+      explanation,
+      difficulty,
+      tagsCsv
+    );
+    return validationError
+      ? invalidArgument(validationError)
+      : callBinding(
+          'quizUpdateQuestion',
+          collectionId,
+          id,
+          topic,
+          question,
+          answer,
+          explanation,
+          difficulty,
+          tagsCsv
+        );
+  },
+  quizDeleteQuestion: (collectionId, id) => {
+    const collectionError = validateQuizId(collectionId);
+    if (collectionError) return invalidArgument(collectionError);
+    const idError = validateQuizId(id);
+    if (idError) return invalidArgument(idError);
+    return callBinding('quizDeleteQuestion', collectionId, id);
   },
   minimizeWindow: () => callBinding('minimizeWindow'),
   maximizeWindow: () => callBinding('maximizeWindow'),

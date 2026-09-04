@@ -16,7 +16,7 @@ dependency checks, `zig build test --summary all`, and `zig build`.
 | `cd frontend-preact && npm test` | All `check-*.mjs` suites in order, then vitest component tests |
 | `npm run test:components` | `vitest run` over `src/**/*.test.jsx` (jsdom) |
 | `npm run check` | Biome lint + format over the frontend |
-| `npm run check:bindings` | `bindings.d.ts` + `backend.js` in sync with `bound_names` (14) |
+| `npm run check:bindings` | `bindings.d.ts` + `backend.js` in sync with `bound_names` (21) |
 | `npm run build` | `check` + `check:bindings` + single-file `dist/index.html` |
 
 ## Frontend suites (`frontend-preact/check-*.mjs`)
