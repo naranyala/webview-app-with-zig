@@ -68,6 +68,15 @@ deployments).
 3. Type in `bindings.d.ts`, wrapper in `backend.js` (validate + mock).
 4. Add the name to `check-bindings.cjs`.
 
+## Linux install note
+
+Workstations whose checkout lives on an NTFS/exFAT mount: Zig's atomic
+install relies on hard-link syscalls those filesystems reject, and `chmod`
+fails there too (files map to the mount owner). `build.zig` therefore
+installs the Linux binary with `mkdir -p` + plain `cp` (the cached binary is
+already executable; `cp` preserves that through the umask) while other
+platforms keep `installArtifact`. Same output path (`zig-out/bin`).
+
 ## Linux libc note
 
 Native builds set LLVM codegen for GCC-16/`R_X86_64_PC64` compatibility and

@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -51,7 +52,22 @@ pub fn build(b: *std.Build) void {
         exe.subsystem = .Windows;
     }
 
-    b.installArtifact(exe);
+    if (builtin.os.tag == .linux) {
+        // Workstations on NTFS/exFAT mounts: Zig's atomic install relies on
+        // hard-link syscalls those filesystems reject, and chmod fails there
+        // too (all files map to the mount owner). Install with a plain copy
+        // instead: the cached binary is already executable and cp preserves
+        // that through the umask. Same output path.
+        const mkdir_bin = b.addSystemCommand(&.{ "mkdir", "-p" });
+        mkdir_bin.addArg(b.exe_dir);
+        const cp_bin = b.addSystemCommand(&.{"cp"});
+        cp_bin.addFileArg(exe.getEmittedBin());
+        cp_bin.addArg(b.getInstallPath(.bin, "webview-app"));
+        cp_bin.step.dependOn(&mkdir_bin.step);
+        b.getInstallStep().dependOn(&cp_bin.step);
+    } else {
+        b.installArtifact(exe);
+    }
 
     // --- Frontend Build (npm + esbuild via frontend-preact) ---
     const npm_install = b.addSystemCommand(&.{"bash"});
